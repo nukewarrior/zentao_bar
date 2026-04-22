@@ -121,19 +121,28 @@ struct ZentaoAPIClient: @unchecked Sendable {
                     token: token
                 )
 
-                if let tasks = try? decodeWrappedArray(
-                    ZentaoTask.self,
-                    from: data,
-                    rootKeys: ["data", "tasks", "items"]
-                ), !tasks.isEmpty {
-                    DebugLogger.log("Loaded tasks from legacy endpoint \(path); count=\(tasks.count)")
-                    return tasks
+                DebugLogger.log("Legacy endpoint \(path) returned \(data.count) bytes")
+                DebugLogger.logResponsePreview(path: path, data: data)
+
+                let legacyJSONTasks = parseLegacyAssignedTasksJSON(data)
+                if !legacyJSONTasks.isEmpty {
+                    DebugLogger.log("Loaded tasks from legacy JSON endpoint \(path); count=\(legacyJSONTasks.count)")
+                    return legacyJSONTasks
                 }
 
                 let htmlTasks = parseLegacyTaskListHTML(data)
                 if !htmlTasks.isEmpty {
                     DebugLogger.log("Parsed tasks from legacy HTML endpoint \(path); count=\(htmlTasks.count)")
                     return htmlTasks
+                }
+
+                if let tasks = try? decodeWrappedArray(
+                    ZentaoTask.self,
+                    from: data,
+                    rootKeys: ["data", "tasks", "items"]
+                ), !tasks.isEmpty {
+                    DebugLogger.log("Loaded tasks from generic legacy decoder \(path); count=\(tasks.count)")
+                    return tasks
                 }
 
                 DebugLogger.log("Legacy endpoint \(path) returned no parsable tasks")
@@ -392,6 +401,89 @@ struct ZentaoAPIClient: @unchecked Sendable {
                 return left.key < right.key
             }
             .map(\.value)
+    }
+
+    private func parseLegacyAssignedTasksJSON(_ data: Data) -> [ZentaoTask] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) else {
+            return []
+        }
+
+        var uniqueTasks: [Int: ZentaoTask] = [:]
+        collectLegacyTasks(from: root, into: &uniqueTasks)
+
+        return uniqueTasks.values.sorted { left, right in
+            left.id < right.id
+        }
+    }
+
+    private func collectLegacyTasks(from value: Any, into tasks: inout [Int: ZentaoTask]) {
+        if let dictionary = value as? [String: Any] {
+            if let task = legacyTask(from: dictionary) {
+                tasks[task.id] = task
+            }
+
+            for nested in dictionary.values {
+                collectLegacyTasks(from: nested, into: &tasks)
+            }
+            return
+        }
+
+        if let array = value as? [Any] {
+            for nested in array {
+                collectLegacyTasks(from: nested, into: &tasks)
+            }
+        }
+    }
+
+    private func legacyTask(from dictionary: [String: Any]) -> ZentaoTask? {
+        let idKeys = ["id", "taskID", "taskId"]
+        let nameKeys = ["name", "title", "taskName"]
+        let assignedKeys = ["assignedTo", "assignedto"]
+        let executionKeys = ["execution", "executionID", "executionId"]
+
+        guard let id = firstIntValue(for: idKeys, in: dictionary),
+              let name = firstStringValue(for: nameKeys, in: dictionary),
+              !name.isEmpty else {
+            return nil
+        }
+
+        return ZentaoTask(
+            id: id,
+            name: name,
+            assignedTo: firstStringValue(for: assignedKeys, in: dictionary),
+            execution: firstIntValue(for: executionKeys, in: dictionary)
+        )
+    }
+
+    private func firstStringValue(for keys: [String], in dictionary: [String: Any]) -> String? {
+        for key in keys {
+            guard let value = dictionary[key] else { continue }
+            if let string = value as? String {
+                let normalized = normalizeLegacyHTMLText(string)
+                if !normalized.isEmpty {
+                    return normalized
+                }
+            } else if let number = value as? NSNumber {
+                return number.stringValue
+            }
+        }
+        return nil
+    }
+
+    private func firstIntValue(for keys: [String], in dictionary: [String: Any]) -> Int? {
+        for key in keys {
+            guard let value = dictionary[key] else { continue }
+            if let intValue = value as? Int {
+                return intValue
+            }
+            if let number = value as? NSNumber {
+                return number.intValue
+            }
+            if let stringValue = value as? String, let intValue = Int(stringValue) {
+                return intValue
+            }
+        }
+        return nil
     }
 
     private func parseLegacyTaskListHTML(_ data: Data) -> [ZentaoTask] {
