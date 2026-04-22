@@ -32,6 +32,18 @@ struct ZentaoCurrentUser: Decodable, Sendable {
 struct ZentaoTask: Decodable, Sendable {
     let id: Int
     let name: String
+    let assignedTo: String?
+    let execution: Int?
+}
+
+struct ZentaoProject: Decodable, Sendable {
+    let id: Int
+    let name: String
+}
+
+struct ZentaoExecution: Decodable, Sendable {
+    let id: Int
+    let name: String
 }
 
 struct ZentaoEstimate: Decodable, Sendable {

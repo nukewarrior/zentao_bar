@@ -104,6 +104,48 @@ struct ZentaoAPIClient: @unchecked Sendable {
         )
     }
 
+    func fetchProjects(baseURL: String, token: String) async throws -> [ZentaoProject] {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/api.php/v1/projects?limit=1000",
+            token: token
+        )
+
+        return try decodeWrappedArray(
+            ZentaoProject.self,
+            from: data,
+            rootKeys: ["data", "projects", "items"]
+        )
+    }
+
+    func fetchProjectExecutions(baseURL: String, token: String, projectID: Int) async throws -> [ZentaoExecution] {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/api.php/v1/projects/\(projectID)/executions?limit=1000",
+            token: token
+        )
+
+        return try decodeWrappedArray(
+            ZentaoExecution.self,
+            from: data,
+            rootKeys: ["data", "executions", "items"]
+        )
+    }
+
+    func fetchExecutionTasks(baseURL: String, token: String, executionID: Int) async throws -> [ZentaoTask] {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/api.php/v1/executions/\(executionID)/tasks",
+            token: token
+        )
+
+        return try decodeWrappedArray(
+            ZentaoTask.self,
+            from: data,
+            rootKeys: ["data", "tasks", "items"]
+        )
+    }
+
     func fetchEstimates(baseURL: String, token: String, taskID: Int) async throws -> [ZentaoEstimate] {
         let data = try await request(
             baseURL: baseURL,

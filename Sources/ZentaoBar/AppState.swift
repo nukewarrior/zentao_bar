@@ -169,9 +169,10 @@ final class AppState: ObservableObject {
                 baseURL: config.baseURL,
                 token: token
             )
-            let tasks = try await apiClient.fetchAssignedTasks(
+            let tasks = try await fetchTasksForCurrentUser(
                 baseURL: config.baseURL,
-                token: token
+                token: token,
+                account: user.account
             )
 
             let today = Self.todayString()
@@ -278,6 +279,89 @@ final class AppState: ObservableObject {
     private func openURL(_ rawURL: String) {
         guard let url = URL(string: rawURL) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    private func fetchTasksForCurrentUser(
+        baseURL: String,
+        token: String,
+        account: String
+    ) async throws -> [ZentaoTask] {
+        do {
+            let tasks = try await apiClient.fetchAssignedTasks(
+                baseURL: baseURL,
+                token: token
+            )
+            DebugLogger.log("Loaded assigned tasks from /tasks?assignedTo=me; count=\(tasks.count)")
+            return tasks
+        } catch let error as ZentaoAPIError {
+            guard case let .requestFailed(statusCode, message) = error,
+                  statusCode == 403,
+                  (message?.localizedCaseInsensitiveContains("Access not allowed") ?? false) else {
+                throw error
+            }
+
+            DebugLogger.log("Falling back to project/execution task traversal due to restricted /tasks endpoint")
+            return try await fetchTasksViaProjectExecutions(
+                baseURL: baseURL,
+                token: token,
+                account: account
+            )
+        }
+    }
+
+    private func fetchTasksViaProjectExecutions(
+        baseURL: String,
+        token: String,
+        account: String
+    ) async throws -> [ZentaoTask] {
+        let projects = try await apiClient.fetchProjects(
+            baseURL: baseURL,
+            token: token
+        )
+        DebugLogger.log("Loaded projects for fallback; count=\(projects.count)")
+
+        var executionIDs = Set<Int>()
+
+        for project in projects {
+            let executions = try await apiClient.fetchProjectExecutions(
+                baseURL: baseURL,
+                token: token,
+                projectID: project.id
+            )
+
+            for execution in executions {
+                executionIDs.insert(execution.id)
+            }
+        }
+
+        DebugLogger.log("Loaded executions for fallback; uniqueCount=\(executionIDs.count)")
+
+        var uniqueTasks: [Int: ZentaoTask] = [:]
+        let apiClient = self.apiClient
+
+        try await withThrowingTaskGroup(of: [ZentaoTask].self) { group in
+            for executionID in executionIDs {
+                group.addTask {
+                    try await apiClient.fetchExecutionTasks(
+                        baseURL: baseURL,
+                        token: token,
+                        executionID: executionID
+                    )
+                }
+            }
+
+            for try await tasks in group {
+                for task in tasks where task.assignedTo == account {
+                    uniqueTasks[task.id] = task
+                }
+            }
+        }
+
+        let result = uniqueTasks.values.sorted { left, right in
+            left.id < right.id
+        }
+        DebugLogger.log("Filtered fallback tasks assigned to \(account); count=\(result.count)")
+        return result
     }
 
     private func friendlyErrorMessage(_ error: Error) -> String {
