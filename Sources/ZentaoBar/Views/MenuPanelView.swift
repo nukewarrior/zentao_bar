@@ -195,7 +195,7 @@ struct MenuPanelView: View {
     private var footerErrorMessage: some View {
         if let errorMessage = appState.errorMessage,
            appState.loadState != .authRequired,
-           appState.loadState != .failed {
+           !isFailedState {
             Text(errorMessage)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -297,5 +297,13 @@ struct MenuPanelView: View {
     private func openAboutWindow() {
         NSApp.activate(ignoringOtherApps: true)
         openWindow(id: "about")
+    }
+
+    private var isFailedState: Bool {
+        if case .failed = appState.loadState {
+            return true
+        }
+
+        return false
     }
 }
