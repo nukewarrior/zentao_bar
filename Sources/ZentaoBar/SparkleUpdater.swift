@@ -75,13 +75,9 @@ final class SparkleUpdater: ObservableObject {
 
     func start() {
 #if canImport(Sparkle)
-        do {
-            try updaterController.startUpdater()
-            statusMessage = "更新服务已启动"
-            syncUpdaterPreferences()
-        } catch {
-            statusMessage = "更新服务启动失败：\(error.localizedDescription)"
-        }
+        updaterController.startUpdater()
+        statusMessage = "更新服务已启动"
+        syncUpdaterPreferences()
 #else
         statusMessage = "当前构建未集成 Sparkle"
 #endif
@@ -162,7 +158,7 @@ final class SparkleUpdater: ObservableObject {
 
         if let error {
             let nsError = error as NSError
-            if nsError.code != SUNoUpdateError {
+            if !(nsError.domain == SUSparkleErrorDomain && nsError.code == 1001) {
                 statusMessage = error.localizedDescription
             }
         }
