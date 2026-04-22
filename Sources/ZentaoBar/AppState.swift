@@ -300,6 +300,17 @@ final class AppState: ObservableObject {
                 throw error
             }
 
+            DebugLogger.log("Falling back to legacy my-work task entry due to restricted /tasks endpoint")
+
+            do {
+                return try await apiClient.fetchLegacyAssignedTasks(
+                    baseURL: baseURL,
+                    token: token
+                )
+            } catch {
+                DebugLogger.log("Legacy my-work fallback failed: \(friendlyErrorMessage(error))")
+            }
+
             DebugLogger.log("Falling back to execution traversal due to restricted /tasks endpoint")
 
             do {

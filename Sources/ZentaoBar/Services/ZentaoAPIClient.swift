@@ -104,6 +104,52 @@ struct ZentaoAPIClient: @unchecked Sendable {
         )
     }
 
+    func fetchLegacyAssignedTasks(baseURL: String, token: String) async throws -> [ZentaoTask] {
+        let candidatePaths = [
+            "/my-work-task-assignedTo.json?zin=1",
+            "/my-work-task-assignedTo.json?mode=json&zin=1",
+            "/my-work-task-assignedTo.html?zin=1"
+        ]
+
+        var lastError: Error?
+
+        for path in candidatePaths {
+            do {
+                let data = try await request(
+                    baseURL: baseURL,
+                    path: path,
+                    token: token
+                )
+
+                if let tasks = try? decodeWrappedArray(
+                    ZentaoTask.self,
+                    from: data,
+                    rootKeys: ["data", "tasks", "items"]
+                ), !tasks.isEmpty {
+                    DebugLogger.log("Loaded tasks from legacy endpoint \(path); count=\(tasks.count)")
+                    return tasks
+                }
+
+                let htmlTasks = parseLegacyTaskListHTML(data)
+                if !htmlTasks.isEmpty {
+                    DebugLogger.log("Parsed tasks from legacy HTML endpoint \(path); count=\(htmlTasks.count)")
+                    return htmlTasks
+                }
+
+                DebugLogger.log("Legacy endpoint \(path) returned no parsable tasks")
+            } catch {
+                lastError = error
+                DebugLogger.log("Legacy endpoint \(path) failed: \(error.localizedDescription)")
+            }
+        }
+
+        if let lastError {
+            throw lastError
+        }
+
+        throw ZentaoAPIError.message("旧版“我的任务”入口未返回可解析的任务数据。")
+    }
+
     func fetchProjects(baseURL: String, token: String) async throws -> [ZentaoProject] {
         let data = try await request(
             baseURL: baseURL,
@@ -346,5 +392,66 @@ struct ZentaoAPIClient: @unchecked Sendable {
                 return left.key < right.key
             }
             .map(\.value)
+    }
+
+    private func parseLegacyTaskListHTML(_ data: Data) -> [ZentaoTask] {
+        guard let html = String(data: data, encoding: .utf8), !html.isEmpty else {
+            return []
+        }
+
+        let pattern = #"href=["'][^"']*task(?:-view)?-(\d+)\.html[^"']*["'][^>]*>(.*?)</a>"#
+        guard let regex = try? NSRegularExpression(
+            pattern: pattern,
+            options: [.caseInsensitive, .dotMatchesLineSeparators]
+        ) else {
+            return []
+        }
+
+        let range = NSRange(html.startIndex..<html.endIndex, in: html)
+        let matches = regex.matches(in: html, options: [], range: range)
+        var uniqueTasks: [Int: ZentaoTask] = [:]
+
+        for match in matches {
+            guard match.numberOfRanges >= 3,
+                  let idRange = Range(match.range(at: 1), in: html),
+                  let nameRange = Range(match.range(at: 2), in: html),
+                  let id = Int(html[idRange]) else {
+                continue
+            }
+
+            let rawName = String(html[nameRange])
+            let name = normalizeLegacyHTMLText(rawName)
+            guard !name.isEmpty else { continue }
+
+            uniqueTasks[id] = ZentaoTask(
+                id: id,
+                name: name,
+                assignedTo: nil,
+                execution: nil
+            )
+        }
+
+        return uniqueTasks.values.sorted { left, right in
+            left.id < right.id
+        }
+    }
+
+    private func normalizeLegacyHTMLText(_ rawValue: String) -> String {
+        let withoutTags = rawValue.replacingOccurrences(
+            of: "<[^>]+>",
+            with: " ",
+            options: .regularExpression
+        )
+        let decoded = withoutTags
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#039;", with: "'")
+
+        return decoded
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
