@@ -78,9 +78,13 @@ jobs:
         shell: bash
         run: brew install xcodegen
 
-      - name: Install Python dependencies
+      - name: Create Python virtualenv
         shell: bash
-        run: python3 -m pip install --user pynacl
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+          ./.venv/bin/python -m pip install --upgrade pip
+          ./.venv/bin/python -m pip install pynacl
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -159,7 +163,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          python3 scripts/sign_sparkle_archive.py \
+          ./.venv/bin/python scripts/sign_sparkle_archive.py \
             --archive "ci-output/dist/ZentaoBar.app.zip" \
             --private-key "${SPARKLE_PRIVATE_ED25519_KEY}" \
             --signature-out "ci-output/release/ZentaoBar.app.zip.edSignature"
@@ -203,7 +207,7 @@ jobs:
 
           jq -r '.body' ci-output/release/release.json > ci-output/release/release-notes.md
 
-          python3 scripts/render_release_notes.py \
+          ./.venv/bin/python scripts/render_release_notes.py \
             --title "ZentaoBar ${RELEASE_TAG}" \
             --input ci-output/release/release-notes.md \
             --output "ci-pages/notes/${RELEASE_TAG}.html"
@@ -213,7 +217,7 @@ jobs:
           ARCHIVE_LENGTH="$(stat -f%z ci-output/dist/ZentaoBar.app.zip)"
           ED_SIGNATURE="$(cat ci-output/release/ZentaoBar.app.zip.edSignature)"
 
-          python3 scripts/write_release_metadata.py \
+          ./.venv/bin/python scripts/write_release_metadata.py \
             --tag "${RELEASE_TAG}" \
             --version "${RELEASE_VERSION}" \
             --build-number "${RELEASE_BUILD_NUMBER}" \
@@ -225,12 +229,12 @@ jobs:
             --minimum-system-version "14.0" \
             --output ci-output/release/current-release.json
 
-          python3 scripts/upsert_release_metadata.py \
+          ./.venv/bin/python scripts/upsert_release_metadata.py \
             --existing ci-output/release/releases-existing.json \
             --entry ci-output/release/current-release.json \
             --output ci-pages/releases.json
 
-          python3 scripts/generate_appcast.py \
+          ./.venv/bin/python scripts/generate_appcast.py \
             --input ci-pages/releases.json \
             --output ci-pages/appcast.xml \
             --feed-title "ZentaoBar Updates" \
