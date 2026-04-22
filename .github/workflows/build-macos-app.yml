@@ -153,8 +153,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          APP_BASENAME="ZentaoBar-${{ steps.meta.outputs.configuration }}"
-          APP_PATH="ci-output/bundles/ZentaoBar-${{ steps.meta.outputs.configuration }}.app"
+          if [[ "${{ steps.meta.outputs.configuration }}" == "release" ]]; then
+            APP_BASENAME="ZentaoBar"
+          else
+            APP_BASENAME="ZentaoBar-${{ steps.meta.outputs.configuration }}"
+          fi
+
+          APP_PATH="ci-output/bundles/${APP_BASENAME}.app"
           ZIP_PATH="ci-output/dist/${APP_BASENAME}.app.zip"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
 
@@ -183,7 +188,7 @@ jobs:
         with:
           name: ${{ steps.meta.outputs.base_name }}
           path: |
-            ci-output/dist/ZentaoBar-${{ steps.meta.outputs.configuration }}.app.zip
+            ci-output/dist/${{ steps.meta.outputs.configuration == 'release' && 'ZentaoBar' || format('ZentaoBar-{0}', steps.meta.outputs.configuration) }}.app.zip
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
           if-no-files-found: error
@@ -193,7 +198,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.meta.outputs.base_name }}-bundle
-          path: ci-output/bundles/ZentaoBar-${{ steps.meta.outputs.configuration }}.app
+          path: ci-output/bundles/${{ steps.meta.outputs.configuration == 'release' && 'ZentaoBar' || format('ZentaoBar-{0}', steps.meta.outputs.configuration) }}.app
           if-no-files-found: error
 
   build-universal:
@@ -267,7 +272,12 @@ jobs:
 
           mkdir -p ci-output/logs ci-output/dist ci-output/bundles
 
-          APP_BASENAME="ZentaoBar-${{ steps.meta.outputs.configuration }}"
+          if [[ "${{ steps.meta.outputs.configuration }}" == "release" ]]; then
+            APP_BASENAME="ZentaoBar"
+          else
+            APP_BASENAME="ZentaoBar-${{ steps.meta.outputs.configuration }}"
+          fi
+
           detect_app_root() {
             local search_root="$1"
 
@@ -330,7 +340,7 @@ jobs:
         with:
           name: ${{ steps.meta.outputs.base_name }}
           path: |
-            ci-output/dist/ZentaoBar-${{ steps.meta.outputs.configuration }}.app.zip
+            ci-output/dist/${{ steps.meta.outputs.configuration == 'release' && 'ZentaoBar' || format('ZentaoBar-{0}', steps.meta.outputs.configuration) }}.app.zip
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
           if-no-files-found: error

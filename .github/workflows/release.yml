@@ -93,8 +93,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          APP_PATH="ci-output/bundles/ZentaoBar-release.app"
-          ZIP_PATH="ci-output/dist/ZentaoBar-release.app.zip"
+          APP_PATH="ci-output/bundles/ZentaoBar.app"
+          ZIP_PATH="ci-output/dist/ZentaoBar.app.zip"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
 
           sh scripts/package-app.sh \
@@ -122,7 +122,7 @@ jobs:
         with:
           name: ${{ steps.meta.outputs.base_name }}
           path: |
-            ci-output/dist/ZentaoBar-release.app.zip
+            ci-output/dist/ZentaoBar.app.zip
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
           if-no-files-found: error
@@ -131,7 +131,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.meta.outputs.base_name }}-bundle
-          path: ci-output/bundles/ZentaoBar-release.app
+          path: ci-output/bundles/ZentaoBar.app
           if-no-files-found: error
 
   release:
@@ -201,10 +201,10 @@ jobs:
 
           ARM_APP="$(detect_app_root "ci-input/apple-silicon")"
           INTEL_APP="$(detect_app_root "ci-input/intel")"
-          UNIVERSAL_APP="ci-output/bundles/ZentaoBar-release.app"
+          UNIVERSAL_APP="ci-output/bundles/ZentaoBar.app"
           LOG_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build.log"
           INFO_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build-info.txt"
-          ZIP_PATH="ci-output/dist/ZentaoBar-release.app.zip"
+          ZIP_PATH="ci-output/dist/ZentaoBar.app.zip"
 
           if [[ -z "${ARM_APP}" ]]; then
             echo "error: failed to locate Apple Silicon .app bundle after artifact download" >&2
@@ -257,7 +257,7 @@ jobs:
           TITLE="${TAG}"
 
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release delete-asset "${TAG}" "ZentaoBar-release.app.zip" --yes || true
+            gh release delete-asset "${TAG}" "ZentaoBar.app.zip" --yes || true
             gh release delete-asset "${TAG}" "ZentaoBar-${TAG}-release-universal-build.log" --yes || true
             gh release delete-asset "${TAG}" "ZentaoBar-${TAG}-release-universal-build-info.txt" --yes || true
 
@@ -274,7 +274,7 @@ jobs:
           fi
 
           gh release upload "${TAG}" \
-            ci-output/dist/ZentaoBar-release.app.zip \
+            ci-output/dist/ZentaoBar.app.zip \
             ci-output/logs/ZentaoBar-${TAG}-release-universal-build.log \
             ci-output/logs/ZentaoBar-${TAG}-release-universal-build-info.txt \
             --clobber

@@ -66,7 +66,7 @@ swift build -c release
 BIN_PATH="$(swift build -c release --show-bin-path)"
 sh scripts/package-app.sh \
   "${BIN_PATH}/ZentaoBar" \
-  "ZentaoBar-release.app" \
+  "ZentaoBar.app" \
   "0.1.0" \
   "0.1.0" \
   "release"
