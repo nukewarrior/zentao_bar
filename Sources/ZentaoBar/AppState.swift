@@ -185,7 +185,7 @@ final class AppState: ObservableObject {
                         TaskWork(
                             id: task.id,
                             name: task.name,
-                            url: "\(baseURL)/task-\(task.id).html",
+                            url: "\(baseURL)/task-view-\(task.id).html",
                             totalConsumed: 0
                         )
                     )

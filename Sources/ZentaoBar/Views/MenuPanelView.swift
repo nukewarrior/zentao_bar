@@ -20,7 +20,11 @@ struct MenuPanelView: View {
             }
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: 320, height: 330, alignment: .topLeading)
+        .background(
+            Color(nsColor: NSColor.windowBackgroundColor)
+                .opacity(0.98)
+        )
         .task {
             if appState.loadState == .idle {
                 await appState.bootstrap()
@@ -106,6 +110,7 @@ struct MenuPanelView: View {
                 ForEach(appState.taskWorks) { task in
                     Button {
                         appState.openTask(task)
+                        closeMenuWindow()
                     } label: {
                         HStack(spacing: 8) {
                             Text(task.name)
@@ -141,15 +146,22 @@ struct MenuPanelView: View {
 
             HStack(spacing: 18) {
                 footerIconButton(systemImage: "gearshape.fill", title: "设置") {
-                    openSettingsWindow()
+                    closeMenuWindow()
+                    DispatchQueue.main.async {
+                        openSettingsWindow()
+                    }
                 }
 
                 footerIconButton(systemImage: "globe", title: "打开禅道") {
                     appState.openZentaoHome()
+                    closeMenuWindow()
                 }
 
                 footerIconButton(systemImage: "info.circle.fill", title: "关于") {
-                    openAboutWindow()
+                    closeMenuWindow()
+                    DispatchQueue.main.async {
+                        openAboutWindow()
+                    }
                 }
 
                 footerIconButton(systemImage: "power", title: "退出") {
@@ -188,15 +200,24 @@ struct MenuPanelView: View {
 
             HStack(spacing: 18) {
                 footerIconButton(systemImage: "person.crop.circle.badge.exclamationmark", title: "登录") {
-                    openSettingsWindow()
+                    closeMenuWindow()
+                    DispatchQueue.main.async {
+                        openSettingsWindow()
+                    }
                 }
 
                 footerIconButton(systemImage: "gearshape.fill", title: "设置") {
-                    openSettingsWindow()
+                    closeMenuWindow()
+                    DispatchQueue.main.async {
+                        openSettingsWindow()
+                    }
                 }
 
                 footerIconButton(systemImage: "info.circle.fill", title: "关于") {
-                    openAboutWindow()
+                    closeMenuWindow()
+                    DispatchQueue.main.async {
+                        openAboutWindow()
+                    }
                 }
 
                 footerIconButton(systemImage: "power", title: "退出") {
@@ -255,6 +276,10 @@ struct MenuPanelView: View {
     private func openAboutWindow() {
         NSApp.activate(ignoringOtherApps: true)
         openWindow(id: "about")
+    }
+
+    private func closeMenuWindow() {
+        NSApp.keyWindow?.close()
     }
 
     private func footerIconButton(systemImage: String, title: String, action: @escaping () -> Void) -> some View {
