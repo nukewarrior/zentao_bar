@@ -1,5 +1,8 @@
 name: Build macOS App
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   workflow_dispatch:
     inputs:
@@ -195,6 +198,16 @@ jobs:
           name: ZentaoBar-v${{ steps.meta.outputs.safe_version }}-${{ inputs.configuration }}-intel-bundle
           path: ci-input/intel
 
+      - name: Inspect downloaded bundle layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Apple Silicon artifact contents:"
+          find ci-input/apple-silicon -maxdepth 6 -print | sort
+          echo
+          echo "Intel artifact contents:"
+          find ci-input/intel -maxdepth 6 -print | sort
+
       - name: Merge universal binary and package app
         shell: bash
         run: |
@@ -202,12 +215,22 @@ jobs:
 
           mkdir -p ci-output/logs ci-output/dist ci-output/bundles
 
-          ARM_APP="ci-input/apple-silicon/ZentaoBar-v${{ steps.meta.outputs.safe_version }}-${{ inputs.configuration }}-apple-silicon.app"
-          INTEL_APP="ci-input/intel/ZentaoBar-v${{ steps.meta.outputs.safe_version }}-${{ inputs.configuration }}-intel.app"
+          ARM_APP="$(find ci-input/apple-silicon -type d -name '*.app' | head -n 1)"
+          INTEL_APP="$(find ci-input/intel -type d -name '*.app' | head -n 1)"
           UNIVERSAL_APP="ci-output/bundles/${{ steps.meta.outputs.base_name }}.app"
           LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
           ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip"
+
+          if [[ -z "${ARM_APP}" ]]; then
+            echo "error: failed to locate Apple Silicon .app bundle after artifact download" >&2
+            exit 1
+          fi
+
+          if [[ -z "${INTEL_APP}" ]]; then
+            echo "error: failed to locate Intel .app bundle after artifact download" >&2
+            exit 1
+          fi
 
           cp -R "${ARM_APP}" "${UNIVERSAL_APP}"
 
