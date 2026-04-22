@@ -215,8 +215,19 @@ jobs:
 
           mkdir -p ci-output/logs ci-output/dist ci-output/bundles
 
-          ARM_APP="$(find ci-input/apple-silicon -type d -name '*.app' | head -n 1)"
-          INTEL_APP="$(find ci-input/intel -type d -name '*.app' | head -n 1)"
+          detect_app_root() {
+            local search_root="$1"
+
+            if [[ -d "${search_root}/Contents" ]]; then
+              echo "${search_root}"
+              return 0
+            fi
+
+            find "${search_root}" -type d -name '*.app' | head -n 1
+          }
+
+          ARM_APP="$(detect_app_root "ci-input/apple-silicon")"
+          INTEL_APP="$(detect_app_root "ci-input/intel")"
           UNIVERSAL_APP="ci-output/bundles/${{ steps.meta.outputs.base_name }}.app"
           LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
