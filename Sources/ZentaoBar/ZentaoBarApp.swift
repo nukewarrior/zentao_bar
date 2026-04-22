@@ -5,9 +5,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { @MainActor in
             await AppState.shared.bootstrap()
-            if AppState.shared.needsAuthentication {
-                AppState.shared.openSettings()
-            }
         }
     }
 }

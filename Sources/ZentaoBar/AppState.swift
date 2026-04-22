@@ -246,9 +246,8 @@ final class AppState: ObservableObject {
         openURL(config.baseURL)
     }
 
-    func openSettings() {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    func quitApplication() {
+        NSApp.terminate(nil)
     }
 
     func baseURLPlaceholder() -> String {

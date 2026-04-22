@@ -130,6 +130,7 @@ jobs:
           } > "${INFO_PATH}"
 
       - name: Upload native artifact
+        id: upload_native
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.meta.outputs.base_name }}
@@ -138,6 +139,16 @@ jobs:
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
           if-no-files-found: error
+
+      - name: Publish native download links
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.arch_label }} 构建完成"
+            echo
+            echo "- Artifact: [${{ steps.meta.outputs.base_name }}](${{ steps.upload_native.outputs.artifact-url }})"
+            echo "- Run artifacts: [查看本次运行的所有构建产物](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)"
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Upload app bundle for universal merge
         uses: actions/upload-artifact@v4
@@ -273,6 +284,7 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "${UNIVERSAL_APP}" "${ZIP_PATH}"
 
       - name: Upload universal artifact
+        id: upload_universal
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.meta.outputs.base_name }}
@@ -281,3 +293,15 @@ jobs:
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
           if-no-files-found: error
+
+      - name: Publish universal download links
+        shell: bash
+        run: |
+          {
+            echo "## 下载链接"
+            echo
+            echo "- Universal app: [${{ steps.meta.outputs.base_name }}](${{ steps.upload_universal.outputs.artifact-url }})"
+            echo "- 本次运行的全部产物: [打开 Artifacts 页面](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}#artifacts)"
+            echo
+            echo "说明：artifact 链接需要登录 GitHub 后才能下载，并且会随 artifact 过期而失效。"
+          } >> "${GITHUB_STEP_SUMMARY}"

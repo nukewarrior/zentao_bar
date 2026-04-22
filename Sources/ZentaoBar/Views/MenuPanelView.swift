@@ -1,6 +1,8 @@
+import AppKit
 import SwiftUI
 
 struct MenuPanelView: View {
+    @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
@@ -94,11 +96,15 @@ struct MenuPanelView: View {
             }
 
             Button("设置...") {
-                appState.openSettings()
+                openSettingsWindow()
             }
 
             Button("打开禅道") {
                 appState.openZentaoHome()
+            }
+
+            Button("退出") {
+                appState.quitApplication()
             }
 
             if let errorMessage = appState.errorMessage,
@@ -124,11 +130,15 @@ struct MenuPanelView: View {
             Divider()
 
             Button("登录...") {
-                appState.openSettings()
+                openSettingsWindow()
             }
 
             Button("设置...") {
-                appState.openSettings()
+                openSettingsWindow()
+            }
+
+            Button("退出") {
+                appState.quitApplication()
             }
         }
     }
@@ -157,5 +167,10 @@ struct MenuPanelView: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 8)
+    }
+
+    private func openSettingsWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        openSettings()
     }
 }
