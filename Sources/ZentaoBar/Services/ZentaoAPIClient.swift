@@ -1,0 +1,207 @@
+import Foundation
+
+struct ZentaoAPIClient: @unchecked Sendable {
+    private let session: URLSession
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func normalizedBaseURL(from rawValue: String) -> String? {
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return nil
+        }
+
+        if components.path.hasSuffix("/api.php/v1") {
+            return nil
+        }
+
+        var path = components.path
+        while path.hasSuffix("/") && path.count > 1 {
+            path.removeLast()
+        }
+        components.path = path
+
+        return components.url?.absoluteString
+    }
+
+    func fetchToken(baseURL: String, account: String, password: String) async throws -> String {
+        let payload = try JSONSerialization.data(
+            withJSONObject: [
+                "account": account,
+                "password": password
+            ]
+        )
+
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/api.php/v1/tokens",
+            method: "POST",
+            body: payload
+        )
+
+        if let response = try? JSONDecoder().decode(ZentaoTokenResponse.self, from: data) {
+            return response.token
+        }
+
+        if let wrapped: ZentaoTokenResponse = try? decodeWrappedObject(
+            ZentaoTokenResponse.self,
+            from: data,
+            rootKeys: ["data"]
+        ) {
+            return wrapped.token
+        }
+
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let token = object["token"] as? String {
+            return token
+        }
+
+        throw ZentaoAPIError.invalidResponse
+    }
+
+    func fetchCurrentUser(baseURL: String, token: String) async throws -> ZentaoCurrentUser {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/api.php/v1/user",
+            token: token
+        )
+
+        if let user = try? JSONDecoder().decode(ZentaoCurrentUser.self, from: data) {
+            return user
+        }
+
+        if let wrapped: ZentaoCurrentUser = try? decodeWrappedObject(
+            ZentaoCurrentUser.self,
+            from: data,
+            rootKeys: ["data", "user"]
+        ) {
+            return wrapped
+        }
+
+        throw ZentaoAPIError.invalidResponse
+    }
+
+    func fetchAssignedTasks(baseURL: String, token: String) async throws -> [ZentaoTask] {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/api.php/v1/tasks?assignedTo=me"
+        ,
+            token: token
+        )
+
+        return try decodeWrappedArray(
+            ZentaoTask.self,
+            from: data,
+            rootKeys: ["data", "tasks", "items"]
+        )
+    }
+
+    func fetchEstimates(baseURL: String, token: String, taskID: Int) async throws -> [ZentaoEstimate] {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/api.php/v1/tasks/\(taskID)/estimate",
+            token: token
+        )
+
+        return try decodeWrappedArray(
+            ZentaoEstimate.self,
+            from: data,
+            rootKeys: ["data", "estimates", "items"]
+        )
+    }
+
+    private func request(
+        baseURL: String,
+        path: String,
+        method: String = "GET",
+        token: String? = nil,
+        body: Data? = nil
+    ) async throws -> Data {
+        guard let base = URL(string: baseURL),
+              let url = URL(string: path, relativeTo: base)?.absoluteURL else {
+            throw ZentaoAPIError.invalidBaseURL
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.httpBody = body
+        request.timeoutInterval = 20
+
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+
+        if let token {
+            request.setValue(token, forHTTPHeaderField: "Token")
+        }
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ZentaoAPIError.invalidResponse
+        }
+
+        switch httpResponse.statusCode {
+        case 200 ..< 300:
+            return data
+        case 401, 403:
+            throw ZentaoAPIError.unauthorized
+        default:
+            let message = String(data: data, encoding: .utf8)
+            throw ZentaoAPIError.requestFailed(
+                statusCode: httpResponse.statusCode,
+                message: message
+            )
+        }
+    }
+
+    private func decodeWrappedArray<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        rootKeys: [String]
+    ) throws -> [T] {
+        let decoder = JSONDecoder()
+        if let direct = try? decoder.decode([T].self, from: data) {
+            return direct
+        }
+
+        if let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in rootKeys {
+                guard let nested = object[key] else { continue }
+                let nestedData = try JSONSerialization.data(withJSONObject: nested)
+                if let decoded = try? decoder.decode([T].self, from: nestedData) {
+                    return decoded
+                }
+            }
+        }
+
+        throw ZentaoAPIError.invalidResponse
+    }
+
+    private func decodeWrappedObject<T: Decodable>(
+        _ type: T.Type,
+        from data: Data,
+        rootKeys: [String]
+    ) throws -> T {
+        let decoder = JSONDecoder()
+        if let direct = try? decoder.decode(T.self, from: data) {
+            return direct
+        }
+
+        if let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            for key in rootKeys {
+                guard let nested = object[key] else { continue }
+                let nestedData = try JSONSerialization.data(withJSONObject: nested)
+                if let decoded = try? decoder.decode(T.self, from: nestedData) {
+                    return decoded
+                }
+            }
+        }
+
+        throw ZentaoAPIError.invalidResponse
+    }
+}

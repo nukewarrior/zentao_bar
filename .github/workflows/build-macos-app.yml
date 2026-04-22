@@ -1,0 +1,249 @@
+name: Build macOS App
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: Build configuration
+        required: true
+        default: release
+        type: choice
+        options:
+          - release
+          - debug
+      version:
+        description: App version (for example 0.1.0). Leave blank to use 0.1.<run_number>.
+        required: false
+        default: ""
+        type: string
+      build_number:
+        description: Bundle build number. Leave blank to use the GitHub run number.
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-native:
+    name: Build ${{ matrix.arch_label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch_label: apple-silicon
+            machine_arch: arm64
+          - runner: macos-15-intel
+            arch_label: intel
+            machine_arch: x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIGURATION="${{ inputs.configuration }}"
+          RAW_VERSION="${{ inputs.version }}"
+          RAW_BUILD_NUMBER="${{ inputs.build_number }}"
+
+          if [[ -z "${RAW_VERSION}" ]]; then
+            VERSION="0.1.${GITHUB_RUN_NUMBER}"
+          else
+            VERSION="${RAW_VERSION}"
+          fi
+
+          if [[ -z "${RAW_BUILD_NUMBER}" ]]; then
+            BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          else
+            BUILD_NUMBER="${RAW_BUILD_NUMBER}"
+          fi
+
+          SAFE_VERSION="${VERSION//\//-}"
+          SAFE_VERSION="${SAFE_VERSION// /-}"
+          BASE_NAME="ZentaoBar-v${SAFE_VERSION}-${CONFIGURATION}-${{ matrix.arch_label }}"
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "safe_version=${SAFE_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "base_name=${BASE_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Show toolchain info
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode-select -p
+          xcodebuild -version
+          swift --version
+          uname -m
+
+      - name: Build executable
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p ci-output/logs ci-output/bundles ci-output/dist
+
+          LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
+          swift build -c "${{ inputs.configuration }}" 2>&1 | tee "${LOG_PATH}"
+
+          BIN_PATH="$(swift build -c "${{ inputs.configuration }}" --show-bin-path)"
+          echo "bin_path=${BIN_PATH}" >> "${GITHUB_OUTPUT}"
+          file "${BIN_PATH}/ZentaoBar" | tee -a "${LOG_PATH}"
+
+      - name: Package app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="ci-output/bundles/${{ steps.meta.outputs.base_name }}.app"
+          ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip"
+          INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
+
+          sh scripts/package-app.sh \
+            "${{ steps.build.outputs.bin_path }}/ZentaoBar" \
+            "${APP_PATH}" \
+            "${{ steps.meta.outputs.version }}" \
+            "${{ steps.meta.outputs.build_number }}"
+
+          ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${ZIP_PATH}"
+
+          {
+            echo "product=ZentaoBar"
+            echo "version=${{ steps.meta.outputs.version }}"
+            echo "build_number=${{ steps.meta.outputs.build_number }}"
+            echo "configuration=${{ inputs.configuration }}"
+            echo "runner=${{ matrix.runner }}"
+            echo "machine_arch=${{ matrix.machine_arch }}"
+            echo "artifact_base_name=${{ steps.meta.outputs.base_name }}"
+          } > "${INFO_PATH}"
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.base_name }}
+          path: |
+            ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip
+            ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
+            ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
+          if-no-files-found: error
+
+      - name: Upload app bundle for universal merge
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.base_name }}-bundle
+          path: ci-output/bundles/${{ steps.meta.outputs.base_name }}.app
+          if-no-files-found: error
+
+  build-universal:
+    name: Build universal app
+    runs-on: macos-15
+    needs: build-native
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve build metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CONFIGURATION="${{ inputs.configuration }}"
+          RAW_VERSION="${{ inputs.version }}"
+          RAW_BUILD_NUMBER="${{ inputs.build_number }}"
+
+          if [[ -z "${RAW_VERSION}" ]]; then
+            VERSION="0.1.${GITHUB_RUN_NUMBER}"
+          else
+            VERSION="${RAW_VERSION}"
+          fi
+
+          if [[ -z "${RAW_BUILD_NUMBER}" ]]; then
+            BUILD_NUMBER="${GITHUB_RUN_NUMBER}"
+          else
+            BUILD_NUMBER="${RAW_BUILD_NUMBER}"
+          fi
+
+          SAFE_VERSION="${VERSION//\//-}"
+          SAFE_VERSION="${SAFE_VERSION// /-}"
+          BASE_NAME="ZentaoBar-v${SAFE_VERSION}-${CONFIGURATION}-universal"
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "safe_version=${SAFE_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "base_name=${BASE_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download Apple Silicon bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ZentaoBar-v${{ steps.meta.outputs.safe_version }}-${{ inputs.configuration }}-apple-silicon-bundle
+          path: ci-input/apple-silicon
+
+      - name: Download Intel bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ZentaoBar-v${{ steps.meta.outputs.safe_version }}-${{ inputs.configuration }}-intel-bundle
+          path: ci-input/intel
+
+      - name: Merge universal binary and package app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p ci-output/logs ci-output/dist ci-output/bundles
+
+          ARM_APP="ci-input/apple-silicon/ZentaoBar-v${{ steps.meta.outputs.safe_version }}-${{ inputs.configuration }}-apple-silicon.app"
+          INTEL_APP="ci-input/intel/ZentaoBar-v${{ steps.meta.outputs.safe_version }}-${{ inputs.configuration }}-intel.app"
+          UNIVERSAL_APP="ci-output/bundles/${{ steps.meta.outputs.base_name }}.app"
+          LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
+          INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
+          ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip"
+
+          cp -R "${ARM_APP}" "${UNIVERSAL_APP}"
+
+          lipo -create \
+            "${ARM_APP}/Contents/MacOS/ZentaoBar" \
+            "${INTEL_APP}/Contents/MacOS/ZentaoBar" \
+            -output "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
+
+          chmod +x "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
+
+          {
+            echo "Merged executable architectures:"
+            lipo -info "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
+            echo
+            echo "Executable file details:"
+            file "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
+          } | tee "${LOG_PATH}"
+
+          {
+            echo "product=ZentaoBar"
+            echo "version=${{ steps.meta.outputs.version }}"
+            echo "build_number=${{ steps.meta.outputs.build_number }}"
+            echo "configuration=${{ inputs.configuration }}"
+            echo "runner=macos-15"
+            echo "machine_arch=universal"
+            echo "artifact_base_name=${{ steps.meta.outputs.base_name }}"
+          } > "${INFO_PATH}"
+
+          ditto -c -k --sequesterRsrc --keepParent "${UNIVERSAL_APP}" "${ZIP_PATH}"
+
+      - name: Upload universal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.base_name }}
+          path: |
+            ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip
+            ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
+            ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
+          if-no-files-found: error
