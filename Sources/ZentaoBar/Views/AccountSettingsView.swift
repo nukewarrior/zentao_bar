@@ -30,12 +30,12 @@ struct AccountSettingsView: View {
                 onSave()
             }
             .buttonStyle(.borderedProminent)
-            .controlSize(.large)
+            .controlSize(.regular)
             .frame(maxWidth: .infinity)
             .disabled(isSubmitting)
         }
-        .padding(16)
-        .frame(width: 220, alignment: .topLeading)
+        .padding(18)
+        .frame(width: 210, alignment: .topLeading)
     }
 
     private var accountCard: some View {
@@ -51,7 +51,7 @@ struct AccountSettingsView: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(accountDisplayName)
-                        .font(.headline)
+                        .font(.headline.weight(.semibold))
                         .lineLimit(1)
                     Text(baseURLDisplay)
                         .font(.caption)
@@ -69,10 +69,10 @@ struct AccountSettingsView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(14)
+        .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(.white.opacity(0.06))
+                .fill(.white.opacity(0.05))
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -82,91 +82,131 @@ struct AccountSettingsView: View {
 
     private var detailPanel: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 16) {
-                        ZStack {
-                            Circle()
-                                .fill(.white.opacity(0.08))
-                            Text(accountInitial)
-                                .font(.system(size: 34, weight: .semibold))
-                        }
-                        .frame(width: 92, height: 92)
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(accountDisplayName)
-                                .font(.title2.weight(.semibold))
-                            Text(baseURLDisplay)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    infoGrid
-
-                    HStack(spacing: 10) {
-                        Button(primaryActionTitle) {
-                            onSave()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isSubmitting)
-
-                        Button("退出登录") {
-                            onLogout()
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(!appState.isLoggedIn)
-
-                        Button("打开禅道") {
-                            onOpenZentao()
-                        }
-                        .buttonStyle(.bordered)
-                    }
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
+                    summaryCard
+                    formCard
                 }
+                .frame(maxWidth: 560, alignment: .leading)
+                .padding(18)
 
-                Divider()
-
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("账户信息")
-                        .font(.headline)
-
-                    Form {
-                        TextField("禅道地址", text: $baseURL)
-                            .textFieldStyle(.roundedBorder)
-
-                        TextField("账号", text: $account)
-                            .textFieldStyle(.roundedBorder)
-
-                        SecureField("密码", text: $password)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    .formStyle(.grouped)
-
-                    if let errorMessage = appState.errorMessage {
-                        Text(errorMessage)
-                            .font(.callout)
-                            .foregroundStyle(.red)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    HStack {
-                        Spacer()
-
-                        Button(primaryActionTitle) {
-                            onSave()
-                        }
-                        .keyboardShortcut(.defaultAction)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(isSubmitting)
-                    }
-                }
+                Spacer(minLength: 0)
             }
-            .padding(20)
         }
     }
 
+    private var summaryCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(.white.opacity(0.08))
+                    Text(accountInitial)
+                        .font(.system(size: 30, weight: .semibold))
+                }
+                .frame(width: 76, height: 76)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(accountDisplayName)
+                        .font(.title3.weight(.semibold))
+                    Text(baseURLDisplay)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            infoGrid
+
+            HStack(spacing: 8) {
+                Button(primaryActionTitle) {
+                    onSave()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(isSubmitting)
+
+                Button("退出登录") {
+                    onLogout()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .disabled(!appState.isLoggedIn)
+
+                Button("打开禅道") {
+                    onOpenZentao()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+            }
+        }
+        .padding(16)
+        .background(cardBackground)
+    }
+
+    private var formCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("账户信息")
+                .font(.headline)
+
+            VStack(spacing: 0) {
+                inputRow("禅道地址") {
+                    TextField("http://host:port/zentao", text: $baseURL)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Divider()
+                    .overlay(.white.opacity(0.06))
+
+                inputRow("账号") {
+                    TextField("请输入账号", text: $account)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                Divider()
+                    .overlay(.white.opacity(0.06))
+
+                inputRow("密码") {
+                    SecureField("请输入密码", text: $password)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(.white.opacity(0.03))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(.white.opacity(0.08), lineWidth: 1)
+            )
+
+            if let errorMessage = appState.errorMessage {
+                Text(errorMessage)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Spacer()
+
+                Button(primaryActionTitle) {
+                    onSave()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(isSubmitting)
+            }
+        }
+        .padding(16)
+        .background(cardBackground)
+    }
+
     private var infoGrid: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             infoRow("账号", accountDisplayName)
             infoRow("禅道地址", baseURLDisplay)
             infoRow("状态", appState.isLoggedIn ? "已登录" : "未登录")
@@ -180,12 +220,24 @@ struct AccountSettingsView: View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
             Text(label)
                 .font(.body.weight(.medium))
-                .frame(width: 72, alignment: .leading)
+                .frame(width: 64, alignment: .leading)
             Text(value)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
+                .lineLimit(1)
             Spacer(minLength: 0)
         }
+    }
+
+    private func inputRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            Text(title)
+                .font(.body.weight(.medium))
+                .frame(width: 72, alignment: .leading)
+
+            content()
+        }
+        .padding(.vertical, 10)
     }
 
     private var accountDisplayName: String {
@@ -222,5 +274,14 @@ struct AccountSettingsView: View {
         }
 
         return appState.isLoggedIn ? "重新登录" : "登录并保存"
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(.white.opacity(0.04))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(.white.opacity(0.08), lineWidth: 1)
+            )
     }
 }

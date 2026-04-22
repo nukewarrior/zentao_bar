@@ -6,40 +6,49 @@ struct AboutSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(metadata.displayName)
-                        .font(.title.weight(.semibold))
-                    Text("禅道菜单栏工时工具")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Divider()
-
-                infoRow("版本", metadata.version)
-                infoRow("构建号", metadata.buildNumber)
-                infoRow("构建配置", metadata.buildConfiguration)
-                infoRow("Bundle ID", metadata.bundleIdentifier)
-                infoRow("可执行文件", metadata.executableName)
-                infoRow("调试日志", metadata.isDebugBuild ? "已启用" : "未启用")
-                infoRow("日志路径", metadata.isDebugBuild ? DebugLogger.logFilePath : "release 构建不写日志")
-                infoRow("刷新策略", "60 秒缓存窗口，非后台轮询")
-
-                HStack(spacing: 10) {
-                    Button("复制版本信息") {
-                        copyVersionInfo()
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(metadata.displayName)
+                            .font(.title2.weight(.semibold))
+                        Text("禅道菜单栏工时工具")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.bordered)
+                    .padding(16)
+                    .background(cardBackground)
 
-                    Button("打开日志目录") {
-                        openLogDirectory()
+                    VStack(alignment: .leading, spacing: 12) {
+                        infoRow("版本", metadata.version)
+                        infoRow("构建号", metadata.buildNumber)
+                        infoRow("构建配置", metadata.buildConfiguration)
+                        infoRow("Bundle ID", metadata.bundleIdentifier)
+                        infoRow("可执行文件", metadata.executableName)
+                        infoRow("调试日志", metadata.isDebugBuild ? "已启用" : "未启用")
+                        infoRow("日志路径", metadata.isDebugBuild ? DebugLogger.logFilePath : "release 构建不写日志")
+                        infoRow("刷新策略", "60 秒缓存窗口，非后台轮询")
+
+                        HStack(spacing: 10) {
+                            Button("复制版本信息") {
+                                copyVersionInfo()
+                            }
+                            .buttonStyle(.bordered)
+
+                            Button("打开日志目录") {
+                                openLogDirectory()
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(!metadata.isDebugBuild)
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(!metadata.isDebugBuild)
+                    .padding(16)
+                    .background(cardBackground)
                 }
+                .frame(maxWidth: 620, alignment: .leading)
+                .padding(18)
+
+                Spacer(minLength: 0)
             }
-            .padding(24)
         }
     }
 
@@ -73,5 +82,14 @@ struct AboutSettingsView: View {
     private func openLogDirectory() {
         let directory = (DebugLogger.logFilePath as NSString).deletingLastPathComponent
         NSWorkspace.shared.open(URL(fileURLWithPath: directory))
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .fill(.white.opacity(0.04))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(.white.opacity(0.08), lineWidth: 1)
+            )
     }
 }

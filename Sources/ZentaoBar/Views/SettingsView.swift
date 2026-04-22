@@ -38,7 +38,7 @@ struct SettingsView: View {
                 }
             }
         }
-        .frame(width: 860, height: 620)
+        .frame(width: 820, height: 560)
         .onAppear {
             syncFormFromConfig(resetPassword: true)
         }
@@ -51,18 +51,19 @@ struct SettingsView: View {
     }
 
     private var header: some View {
-        VStack(spacing: 16) {
-            Text("ZentaoBar Settings")
-                .font(.title2.weight(.semibold))
+        HStack {
+            Spacer()
 
-            HStack(spacing: 24) {
+            HStack(spacing: 14) {
                 tabButton(.account, systemImage: "person.crop.circle", title: "账户")
                 tabButton(.general, systemImage: "slider.horizontal.3", title: "设置")
                 tabButton(.about, systemImage: "info.circle", title: "关于")
             }
+
+            Spacer()
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
     }
 
     private func tabButton(_ tab: SettingsTab, systemImage: String, title: String) -> some View {
@@ -71,21 +72,21 @@ struct SettingsView: View {
         return Button {
             preferences.openSettings(tab: tab)
         } label: {
-            VStack(spacing: 6) {
+            VStack(spacing: 4) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 24, weight: .medium))
+                    .font(.system(size: 22, weight: .medium))
                 Text(title)
-                    .font(.headline)
+                    .font(.headline.weight(.medium))
             }
-            .frame(width: 108, height: 84)
+            .frame(width: 92, height: 72)
             .foregroundStyle(isSelected ? .blue : .secondary)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? .blue.opacity(0.08) : .clear)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isSelected ? .blue.opacity(0.08) : .white.opacity(0.03))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? .blue.opacity(0.35) : .clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(isSelected ? .blue.opacity(0.35) : .white.opacity(0.06), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
