@@ -4,6 +4,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
+  push:
+    branches:
+      - main
+      - master
   workflow_dispatch:
     inputs:
       configuration:
@@ -41,7 +45,11 @@ jobs:
   build-native:
     name: Build ${{ matrix.arch_label }}
     runs-on: ${{ matrix.runner }}
-    if: ${{ inputs.architecture == 'universal' || inputs.architecture == matrix.arch_label }}
+    if: >-
+      ${{
+        (github.event_name == 'push' && matrix.arch_label == 'apple-silicon') ||
+        (github.event_name == 'workflow_dispatch' && (inputs.architecture == 'universal' || inputs.architecture == matrix.arch_label))
+      }}
     strategy:
       fail-fast: false
       matrix:
@@ -63,9 +71,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          CONFIGURATION="${{ inputs.configuration }}"
-          RAW_VERSION="${{ inputs.version }}"
-          RAW_BUILD_NUMBER="${{ inputs.build_number }}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            CONFIGURATION="${{ inputs.configuration }}"
+            RAW_VERSION="${{ inputs.version }}"
+            RAW_BUILD_NUMBER="${{ inputs.build_number }}"
+          else
+            CONFIGURATION="debug"
+            RAW_VERSION=""
+            RAW_BUILD_NUMBER=""
+          fi
 
           if [[ -z "${RAW_VERSION}" ]]; then
             VERSION="0.1.${GITHUB_RUN_NUMBER}"
@@ -83,6 +97,7 @@ jobs:
           SAFE_VERSION="${SAFE_VERSION// /-}"
           BASE_NAME="ZentaoBar-v${SAFE_VERSION}-${CONFIGURATION}-${{ matrix.arch_label }}"
 
+          echo "configuration=${CONFIGURATION}" >> "${GITHUB_OUTPUT}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "safe_version=${SAFE_VERSION}" >> "${GITHUB_OUTPUT}"
           echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
@@ -106,9 +121,9 @@ jobs:
           mkdir -p ci-output/logs ci-output/bundles ci-output/dist
 
           LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
-          swift build -c "${{ inputs.configuration }}" 2>&1 | tee "${LOG_PATH}"
+          swift build -c "${{ steps.meta.outputs.configuration }}" 2>&1 | tee "${LOG_PATH}"
 
-          BIN_PATH="$(swift build -c "${{ inputs.configuration }}" --show-bin-path)"
+          BIN_PATH="$(swift build -c "${{ steps.meta.outputs.configuration }}" --show-bin-path)"
           echo "bin_path=${BIN_PATH}" >> "${GITHUB_OUTPUT}"
           file "${BIN_PATH}/ZentaoBar" | tee -a "${LOG_PATH}"
 
@@ -117,8 +132,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          APP_BASENAME="ZentaoBar-${{ inputs.configuration }}"
-          APP_PATH="ci-output/bundles/ZentaoBar-${{ inputs.configuration }}.app"
+          APP_BASENAME="ZentaoBar-${{ steps.meta.outputs.configuration }}"
+          APP_PATH="ci-output/bundles/ZentaoBar-${{ steps.meta.outputs.configuration }}.app"
           ZIP_PATH="ci-output/dist/${APP_BASENAME}.app.zip"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
 
@@ -127,7 +142,7 @@ jobs:
             "${APP_PATH}" \
             "${{ steps.meta.outputs.version }}" \
             "${{ steps.meta.outputs.build_number }}" \
-            "${{ inputs.configuration }}"
+            "${{ steps.meta.outputs.configuration }}"
 
           ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${ZIP_PATH}"
 
@@ -135,7 +150,7 @@ jobs:
             echo "product=ZentaoBar"
             echo "version=${{ steps.meta.outputs.version }}"
             echo "build_number=${{ steps.meta.outputs.build_number }}"
-            echo "configuration=${{ inputs.configuration }}"
+            echo "configuration=${{ steps.meta.outputs.configuration }}"
             echo "runner=${{ matrix.runner }}"
             echo "machine_arch=${{ matrix.machine_arch }}"
             echo "artifact_base_name=${{ steps.meta.outputs.base_name }}"
@@ -146,7 +161,7 @@ jobs:
         with:
           name: ${{ steps.meta.outputs.base_name }}
           path: |
-            ci-output/dist/ZentaoBar-${{ inputs.configuration }}.app.zip
+            ci-output/dist/ZentaoBar-${{ steps.meta.outputs.configuration }}.app.zip
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
           if-no-files-found: error
@@ -155,14 +170,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.meta.outputs.base_name }}-bundle
-          path: ci-output/bundles/ZentaoBar-${{ inputs.configuration }}.app
+          path: ci-output/bundles/ZentaoBar-${{ steps.meta.outputs.configuration }}.app
           if-no-files-found: error
 
   build-universal:
     name: Build universal app
     runs-on: macos-15
     needs: build-native
-    if: ${{ inputs.architecture == 'universal' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.architecture == 'universal' }}
 
     steps:
       - name: Checkout
@@ -194,6 +209,7 @@ jobs:
           SAFE_VERSION="${SAFE_VERSION// /-}"
           BASE_NAME="ZentaoBar-v${SAFE_VERSION}-${CONFIGURATION}-universal"
 
+          echo "configuration=${CONFIGURATION}" >> "${GITHUB_OUTPUT}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "safe_version=${SAFE_VERSION}" >> "${GITHUB_OUTPUT}"
           echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
@@ -228,7 +244,7 @@ jobs:
 
           mkdir -p ci-output/logs ci-output/dist ci-output/bundles
 
-          APP_BASENAME="ZentaoBar-${{ inputs.configuration }}"
+          APP_BASENAME="ZentaoBar-${{ steps.meta.outputs.configuration }}"
           detect_app_root() {
             local search_root="$1"
 
@@ -242,7 +258,7 @@ jobs:
 
           ARM_APP="$(detect_app_root "ci-input/apple-silicon")"
           INTEL_APP="$(detect_app_root "ci-input/intel")"
-          UNIVERSAL_APP="ci-output/bundles/ZentaoBar-${{ inputs.configuration }}.app"
+          UNIVERSAL_APP="ci-output/bundles/ZentaoBar-${{ steps.meta.outputs.configuration }}.app"
           LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
           ZIP_PATH="ci-output/dist/${APP_BASENAME}.app.zip"
@@ -278,7 +294,7 @@ jobs:
             echo "product=ZentaoBar"
             echo "version=${{ steps.meta.outputs.version }}"
             echo "build_number=${{ steps.meta.outputs.build_number }}"
-            echo "configuration=${{ inputs.configuration }}"
+            echo "configuration=${{ steps.meta.outputs.configuration }}"
             echo "runner=macos-15"
             echo "machine_arch=universal"
             echo "artifact_base_name=${{ steps.meta.outputs.base_name }}"
@@ -291,7 +307,7 @@ jobs:
         with:
           name: ${{ steps.meta.outputs.base_name }}
           path: |
-            ci-output/dist/ZentaoBar-${{ inputs.configuration }}.app.zip
+            ci-output/dist/ZentaoBar-${{ steps.meta.outputs.configuration }}.app.zip
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
           if-no-files-found: error
