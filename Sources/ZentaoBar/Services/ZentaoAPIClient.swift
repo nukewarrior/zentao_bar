@@ -125,8 +125,7 @@ struct ZentaoAPIClient: @unchecked Sendable {
         token: String? = nil,
         body: Data? = nil
     ) async throws -> Data {
-        guard let base = URL(string: baseURL),
-              let url = URL(string: path, relativeTo: base)?.absoluteURL else {
+        guard let url = buildURL(baseURL: baseURL, path: path) else {
             throw ZentaoAPIError.invalidBaseURL
         }
 
@@ -154,15 +153,42 @@ struct ZentaoAPIClient: @unchecked Sendable {
         switch httpResponse.statusCode {
         case 200 ..< 300:
             return data
-        case 401, 403:
+        case 401:
             throw ZentaoAPIError.unauthorized
+        case 403:
+            DebugLogger.logResponsePreview(path: path, data: data)
+            let message = String(data: data, encoding: .utf8)
+            throw ZentaoAPIError.requestFailed(
+                statusCode: httpResponse.statusCode,
+                message: message
+            )
         default:
+            DebugLogger.logResponsePreview(path: path, data: data)
             let message = String(data: data, encoding: .utf8)
             throw ZentaoAPIError.requestFailed(
                 statusCode: httpResponse.statusCode,
                 message: message
             )
         }
+    }
+
+    private func buildURL(baseURL: String, path: String) -> URL? {
+        guard var components = URLComponents(string: baseURL) else {
+            return nil
+        }
+
+        let normalizedBasePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let normalizedRequestPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+        if normalizedBasePath.isEmpty {
+            components.path = "/" + normalizedRequestPath
+        } else if normalizedRequestPath.isEmpty {
+            components.path = "/" + normalizedBasePath
+        } else {
+            components.path = "/" + normalizedBasePath + "/" + normalizedRequestPath
+        }
+
+        return components.url
     }
 
     private func decodeWrappedArray<T: Decodable>(
