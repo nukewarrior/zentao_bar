@@ -178,7 +178,19 @@ final class AppState: ObservableObject {
             let today = Self.todayString()
             let apiClient = self.apiClient
             let baseURL = config.baseURL
-            var aggregates: [Int: TaskWork] = [:]
+            var aggregates: [Int: TaskWork] = Dictionary(
+                uniqueKeysWithValues: tasks.map { task in
+                    (
+                        task.id,
+                        TaskWork(
+                            id: task.id,
+                            name: task.name,
+                            url: "\(baseURL)/task-\(task.id).html",
+                            totalConsumed: 0
+                        )
+                    )
+                }
+            )
 
             try await withThrowingTaskGroup(of: (ZentaoTask, [ZentaoEstimate]).self) { group in
                 for task in tasks {
@@ -194,15 +206,6 @@ final class AppState: ObservableObject {
 
                 for try await (task, estimates) in group {
                     for estimate in estimates where estimate.account == user.account && estimate.date == today {
-                        if aggregates[task.id] == nil {
-                            aggregates[task.id] = TaskWork(
-                                id: task.id,
-                                name: task.name,
-                                url: "\(baseURL)/task-\(task.id).html",
-                                totalConsumed: 0
-                            )
-                        }
-
                         aggregates[task.id]?.totalConsumed += estimate.consumed
                     }
                 }
@@ -220,7 +223,7 @@ final class AppState: ObservableObject {
             totalConsumed = sorted.reduce(0) { $0 + $1.totalConsumed }
             lastUpdatedAt = Date()
             configStore.saveLastRefreshDate(lastUpdatedAt)
-            loadState = sorted.isEmpty ? .empty : .loaded
+            loadState = tasks.isEmpty ? .empty : .loaded
             DebugLogger.log(
                 "Refresh succeeded; user=\(user.account), taskCount=\(sorted.count), totalConsumed=\(totalConsumed)"
             )

@@ -10,6 +10,14 @@ struct TaskWork: Identifiable, Equatable, Sendable {
     let name: String
     let url: String
     var totalConsumed: Double
+
+    var formattedConsumedWithUnit: String {
+        if totalConsumed.truncatingRemainder(dividingBy: 1) == 0 {
+            return "\(Int(totalConsumed))h"
+        }
+
+        return String(format: "%.1fh", totalConsumed)
+    }
 }
 
 enum LoadState: Equatable, Sendable {

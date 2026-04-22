@@ -67,7 +67,7 @@ struct MenuPanelView: View {
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                            Text("\(task.totalConsumed, specifier: "%.1f")h")
+                            Text(task.formattedConsumedWithUnit)
                                 .foregroundStyle(.blue)
                         }
                         .contentShape(Rectangle())
@@ -153,7 +153,7 @@ struct MenuPanelView: View {
     }
 
     private var emptyContent: some View {
-        Text("今天暂无工时记录")
+        Text("当前没有分配给你的任务")
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .padding(.vertical, 4)
