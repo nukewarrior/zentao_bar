@@ -1,0 +1,280 @@
+name: Release macOS App
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag to release, for example v1.2.3
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-native:
+    name: Build ${{ matrix.arch_label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch_label: apple-silicon
+            machine_arch: arm64
+          - runner: macos-15-intel
+            arch_label: intel
+            machine_arch: x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "error: expected a semantic version tag like v1.2.3 but got ${TAG}" >&2
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          BUILD_NUMBER="${VERSION}"
+          BASE_NAME="ZentaoBar-${TAG}-release-${{ matrix.arch_label }}"
+
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "base_name=${BASE_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Show toolchain info
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcode-select -p
+          xcodebuild -version
+          swift --version
+          uname -m
+
+      - name: Build executable
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p ci-output/logs ci-output/bundles ci-output/dist
+
+          LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
+          swift build -c release 2>&1 | tee "${LOG_PATH}"
+
+          BIN_PATH="$(swift build -c release --show-bin-path)"
+          echo "bin_path=${BIN_PATH}" >> "${GITHUB_OUTPUT}"
+          file "${BIN_PATH}/ZentaoBar" | tee -a "${LOG_PATH}"
+
+      - name: Package app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="ci-output/bundles/ZentaoBar-release.app"
+          ZIP_PATH="ci-output/dist/ZentaoBar-release.app.zip"
+          INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
+
+          sh scripts/package-app.sh \
+            "${{ steps.build.outputs.bin_path }}/ZentaoBar" \
+            "${APP_PATH}" \
+            "${{ steps.meta.outputs.version }}" \
+            "${{ steps.meta.outputs.build_number }}" \
+            "release"
+
+          ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${ZIP_PATH}"
+
+          {
+            echo "product=ZentaoBar"
+            echo "tag=${{ steps.meta.outputs.tag }}"
+            echo "version=${{ steps.meta.outputs.version }}"
+            echo "build_number=${{ steps.meta.outputs.build_number }}"
+            echo "configuration=release"
+            echo "runner=${{ matrix.runner }}"
+            echo "machine_arch=${{ matrix.machine_arch }}"
+            echo "artifact_base_name=${{ steps.meta.outputs.base_name }}"
+          } > "${INFO_PATH}"
+
+      - name: Upload native artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.base_name }}
+          path: |
+            ci-output/dist/ZentaoBar-release.app.zip
+            ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
+            ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
+          if-no-files-found: error
+
+      - name: Upload app bundle for universal merge
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.base_name }}-bundle
+          path: ci-output/bundles/ZentaoBar-release.app
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    runs-on: macos-15
+    needs: build-native
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "error: expected a semantic version tag like v1.2.3 but got ${TAG}" >&2
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+          BUILD_NUMBER="${VERSION}"
+
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download Apple Silicon bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ZentaoBar-${{ steps.meta.outputs.tag }}-release-apple-silicon-bundle
+          path: ci-input/apple-silicon
+
+      - name: Download Intel bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ZentaoBar-${{ steps.meta.outputs.tag }}-release-intel-bundle
+          path: ci-input/intel
+
+      - name: Merge universal binary and package app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p ci-output/logs ci-output/dist ci-output/bundles
+
+          detect_app_root() {
+            local search_root="$1"
+
+            if [[ -d "${search_root}/Contents" ]]; then
+              echo "${search_root}"
+              return 0
+            fi
+
+            find "${search_root}" -type d -name '*.app' | head -n 1
+          }
+
+          ARM_APP="$(detect_app_root "ci-input/apple-silicon")"
+          INTEL_APP="$(detect_app_root "ci-input/intel")"
+          UNIVERSAL_APP="ci-output/bundles/ZentaoBar-release.app"
+          LOG_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build.log"
+          INFO_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build-info.txt"
+          ZIP_PATH="ci-output/dist/ZentaoBar-release.app.zip"
+
+          if [[ -z "${ARM_APP}" ]]; then
+            echo "error: failed to locate Apple Silicon .app bundle after artifact download" >&2
+            exit 1
+          fi
+
+          if [[ -z "${INTEL_APP}" ]]; then
+            echo "error: failed to locate Intel .app bundle after artifact download" >&2
+            exit 1
+          fi
+
+          cp -R "${ARM_APP}" "${UNIVERSAL_APP}"
+
+          lipo -create \
+            "${ARM_APP}/Contents/MacOS/ZentaoBar" \
+            "${INTEL_APP}/Contents/MacOS/ZentaoBar" \
+            -output "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
+
+          chmod +x "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
+
+          {
+            echo "Merged executable architectures:"
+            lipo -info "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
+            echo
+            echo "Executable file details:"
+            file "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
+          } | tee "${LOG_PATH}"
+
+          {
+            echo "product=ZentaoBar"
+            echo "tag=${{ steps.meta.outputs.tag }}"
+            echo "version=${{ steps.meta.outputs.version }}"
+            echo "build_number=${{ steps.meta.outputs.build_number }}"
+            echo "configuration=release"
+            echo "runner=macos-15"
+            echo "machine_arch=universal"
+            echo "artifact_base_name=ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal"
+          } > "${INFO_PATH}"
+
+          ditto -c -k --sequesterRsrc --keepParent "${UNIVERSAL_APP}" "${ZIP_PATH}"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${{ steps.meta.outputs.tag }}"
+          TITLE="${TAG}"
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release delete-asset "${TAG}" "ZentaoBar-release.app.zip" --yes || true
+            gh release delete-asset "${TAG}" "ZentaoBar-${TAG}-release-universal-build.log" --yes || true
+            gh release delete-asset "${TAG}" "ZentaoBar-${TAG}-release-universal-build-info.txt" --yes || true
+
+            gh release edit "${TAG}" \
+              --title "${TITLE}" \
+              --notes-file <(gh api \
+                repos/${{ github.repository }}/releases/generate-notes \
+                -f tag_name="${TAG}" \
+                --jq '.body')
+          else
+            gh release create "${TAG}" \
+              --title "${TITLE}" \
+              --generate-notes
+          fi
+
+          gh release upload "${TAG}" \
+            ci-output/dist/ZentaoBar-release.app.zip \
+            ci-output/logs/ZentaoBar-${TAG}-release-universal-build.log \
+            ci-output/logs/ZentaoBar-${TAG}-release-universal-build-info.txt \
+            --clobber
