@@ -1,9 +1,8 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var preferences: PreferencesStore
 
     @State private var baseURL = ""
     @State private var account = ""
@@ -11,74 +10,107 @@ struct SettingsView: View {
     @State private var isSubmitting = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("禅道设置")
-                .font(.title2.weight(.semibold))
+        VStack(spacing: 0) {
+            header
 
-            Text("请输入禅道地址、账号和密码。地址只需要填写站点根地址，例如 `http://host:port/zentao`。")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            Divider()
 
-            Form {
-                TextField("禅道地址", text: $baseURL)
-                    .textFieldStyle(.roundedBorder)
-
-                TextField("账号", text: $account)
-                    .textFieldStyle(.roundedBorder)
-
-                SecureField("密码", text: $password)
-                    .textFieldStyle(.roundedBorder)
-            }
-            .formStyle(.grouped)
-
-            if let errorMessage = appState.errorMessage {
-                Text(errorMessage)
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack {
-                Button("退出登录") {
-                    appState.logout()
-                }
-                .disabled(appState.config == nil)
-
-                Button("关于...") {
-                    openWindow(id: "about")
-                }
-
-                Spacer()
-
-                Button("取消") {
-                    dismiss()
-                }
-
-                Button(isSubmitting ? "登录中..." : "登录并保存") {
-                    Task {
-                        isSubmitting = true
-                        let succeeded = await appState.login(
-                            baseURL: baseURL,
-                            account: account,
-                            password: password
-                        )
-                        isSubmitting = false
-                        if succeeded {
+            Group {
+                switch preferences.selectedSettingsTab {
+                case .account:
+                    AccountSettingsView(
+                        baseURL: $baseURL,
+                        account: $account,
+                        password: $password,
+                        isSubmitting: $isSubmitting,
+                        onSave: submitLogin,
+                        onLogout: {
                             password = ""
-                            dismiss()
-                        }
-                    }
+                            appState.logout()
+                            syncFormFromConfig(resetPassword: false)
+                        },
+                        onOpenZentao: { appState.openZentaoHome() }
+                    )
+                case .general:
+                    GeneralSettingsView()
+                case .about:
+                    AboutSettingsView()
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(isSubmitting)
             }
         }
-        .padding(20)
-        .frame(width: 440)
+        .frame(width: 860, height: 620)
         .onAppear {
-            baseURL = appState.config?.baseURL ?? ""
-            account = appState.config?.account ?? ""
+            syncFormFromConfig(resetPassword: true)
+        }
+        .onChange(of: appState.config?.baseURL) { _, _ in
+            syncFormFromConfig(resetPassword: false)
+        }
+        .onChange(of: appState.config?.account) { _, _ in
+            syncFormFromConfig(resetPassword: false)
+        }
+    }
+
+    private var header: some View {
+        VStack(spacing: 16) {
+            Text("ZentaoBar Settings")
+                .font(.title2.weight(.semibold))
+
+            HStack(spacing: 24) {
+                tabButton(.account, systemImage: "person.crop.circle", title: "账户")
+                tabButton(.general, systemImage: "slider.horizontal.3", title: "设置")
+                tabButton(.about, systemImage: "info.circle", title: "关于")
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 18)
+    }
+
+    private func tabButton(_ tab: SettingsTab, systemImage: String, title: String) -> some View {
+        let isSelected = preferences.selectedSettingsTab == tab
+
+        return Button {
+            preferences.openSettings(tab: tab)
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 24, weight: .medium))
+                Text(title)
+                    .font(.headline)
+            }
+            .frame(width: 108, height: 84)
+            .foregroundStyle(isSelected ? .blue : .secondary)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isSelected ? .blue.opacity(0.08) : .clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? .blue.opacity(0.35) : .clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func submitLogin() {
+        Task {
+            isSubmitting = true
+            let succeeded = await appState.login(
+                baseURL: baseURL,
+                account: account,
+                password: password
+            )
+            isSubmitting = false
+            if succeeded {
+                password = ""
+            }
+        }
+    }
+
+    private func syncFormFromConfig(resetPassword: Bool) {
+        baseURL = appState.config?.baseURL ?? ""
+        account = appState.config?.account ?? ""
+
+        if resetPassword {
             password = ""
         }
     }

@@ -13,11 +13,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct ZentaoBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState.shared
+    @StateObject private var preferences = PreferencesStore.shared
 
     var body: some Scene {
         MenuBarExtra {
             MenuPanelView()
                 .environmentObject(appState)
+                .environmentObject(preferences)
         } label: {
             Text(appState.formattedTotal)
         }
@@ -26,11 +28,13 @@ struct ZentaoBarApp: App {
         Settings {
             SettingsView()
                 .environmentObject(appState)
+                .environmentObject(preferences)
         }
 
         Window("关于 ZentaoBar", id: "about") {
             AboutView()
                 .environmentObject(appState)
+                .environmentObject(preferences)
         }
     }
 }

@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 struct MenuPanelView: View {
-    @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var preferences: PreferencesStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -113,7 +113,9 @@ struct MenuPanelView: View {
                 ForEach(appState.taskWorks) { task in
                     Button {
                         appState.openTask(task)
-                        closeMenuWindow()
+                        if preferences.autoCloseAfterTaskClick {
+                            closeMenuWindow()
+                        }
                     } label: {
                         HStack(spacing: 8) {
                             Text(task.name)
@@ -149,7 +151,10 @@ struct MenuPanelView: View {
 
             HStack(spacing: 18) {
                 footerIconButton(systemImage: "gearshape.fill", title: "设置") {
-                    closeMenuWindow()
+                    preferences.openSettings(tab: .general)
+                    if preferences.autoCloseAfterActionClick {
+                        closeMenuWindow()
+                    }
                     DispatchQueue.main.async {
                         openSettingsWindow()
                     }
@@ -157,13 +162,18 @@ struct MenuPanelView: View {
 
                 footerIconButton(systemImage: "globe", title: "打开禅道") {
                     appState.openZentaoHome()
-                    closeMenuWindow()
+                    if preferences.autoCloseAfterActionClick {
+                        closeMenuWindow()
+                    }
                 }
 
                 footerIconButton(systemImage: "info.circle.fill", title: "关于") {
-                    closeMenuWindow()
+                    preferences.openSettings(tab: .about)
+                    if preferences.autoCloseAfterActionClick {
+                        closeMenuWindow()
+                    }
                     DispatchQueue.main.async {
-                        openAboutWindow()
+                        openSettingsWindow()
                     }
                 }
 
@@ -203,23 +213,32 @@ struct MenuPanelView: View {
 
             HStack(spacing: 18) {
                 footerIconButton(systemImage: "person.crop.circle.badge.exclamationmark", title: "登录") {
-                    closeMenuWindow()
+                    preferences.openSettings(tab: .account)
+                    if preferences.autoCloseAfterActionClick {
+                        closeMenuWindow()
+                    }
                     DispatchQueue.main.async {
                         openSettingsWindow()
                     }
                 }
 
                 footerIconButton(systemImage: "gearshape.fill", title: "设置") {
-                    closeMenuWindow()
+                    preferences.openSettings(tab: .general)
+                    if preferences.autoCloseAfterActionClick {
+                        closeMenuWindow()
+                    }
                     DispatchQueue.main.async {
                         openSettingsWindow()
                     }
                 }
 
                 footerIconButton(systemImage: "info.circle.fill", title: "关于") {
-                    closeMenuWindow()
+                    preferences.openSettings(tab: .about)
+                    if preferences.autoCloseAfterActionClick {
+                        closeMenuWindow()
+                    }
                     DispatchQueue.main.async {
-                        openAboutWindow()
+                        openSettingsWindow()
                     }
                 }
 
@@ -274,11 +293,6 @@ struct MenuPanelView: View {
     private func openSettingsWindow() {
         NSApp.activate(ignoringOtherApps: true)
         openSettings()
-    }
-
-    private func openAboutWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        openWindow(id: "about")
     }
 
     private func closeMenuWindow() {

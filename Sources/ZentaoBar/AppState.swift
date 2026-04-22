@@ -37,6 +37,14 @@ final class AppState: ObservableObject {
         configStore.load()
     }
 
+    var isLoggedIn: Bool {
+        config != nil && currentToken != nil
+    }
+
+    var currentTaskCount: Int {
+        taskWorks.count
+    }
+
     var formattedTotal: String {
         let total = totalConsumed
         if total.truncatingRemainder(dividingBy: 1) == 0 {
