@@ -30,6 +30,7 @@ struct ZentaoAPIClient: @unchecked Sendable {
     }
 
     func fetchToken(baseURL: String, account: String, password: String) async throws -> String {
+        DebugLogger.log("Requesting token for account=\(account), baseURL=\(baseURL)")
         let payload = try JSONSerialization.data(
             withJSONObject: [
                 "account": account,
@@ -61,6 +62,7 @@ struct ZentaoAPIClient: @unchecked Sendable {
             return token
         }
 
+        DebugLogger.logResponsePreview(path: "/api.php/v1/tokens", data: data)
         throw ZentaoAPIError.invalidResponse
     }
 
@@ -78,11 +80,12 @@ struct ZentaoAPIClient: @unchecked Sendable {
         if let wrapped: ZentaoCurrentUser = try? decodeWrappedObject(
             ZentaoCurrentUser.self,
             from: data,
-            rootKeys: ["data", "user"]
+            rootKeys: ["data", "user", "profile"]
         ) {
             return wrapped
         }
 
+        DebugLogger.logResponsePreview(path: "/api.php/v1/user", data: data)
         throw ZentaoAPIError.invalidResponse
     }
 
@@ -111,7 +114,7 @@ struct ZentaoAPIClient: @unchecked Sendable {
         return try decodeWrappedArray(
             ZentaoEstimate.self,
             from: data,
-            rootKeys: ["data", "estimates", "items"]
+            rootKeys: ["data", "estimates", "items", "effort"]
         )
     }
 
@@ -131,6 +134,7 @@ struct ZentaoAPIClient: @unchecked Sendable {
         request.httpMethod = method
         request.httpBody = body
         request.timeoutInterval = 20
+        DebugLogger.log("HTTP \(method) \(url.absoluteString)")
 
         if body != nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -144,6 +148,8 @@ struct ZentaoAPIClient: @unchecked Sendable {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ZentaoAPIError.invalidResponse
         }
+
+        DebugLogger.log("HTTP \(method) \(url.absoluteString) -> \(httpResponse.statusCode), bytes=\(data.count)")
 
         switch httpResponse.statusCode {
         case 200 ..< 300:
@@ -169,16 +175,20 @@ struct ZentaoAPIClient: @unchecked Sendable {
             return direct
         }
 
+        if let directDictionary = try? decoder.decode([String: T].self, from: data) {
+            return values(from: directDictionary)
+        }
+
         if let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
             for key in rootKeys {
                 guard let nested = object[key] else { continue }
-                let nestedData = try JSONSerialization.data(withJSONObject: nested)
-                if let decoded = try? decoder.decode([T].self, from: nestedData) {
+                if let decoded = try? decodeArrayLikeValue(nested, as: T.self, decoder: decoder) {
                     return decoded
                 }
             }
         }
 
+        DebugLogger.logResponsePreview(path: rootKeys.joined(separator: ","), data: data)
         throw ZentaoAPIError.invalidResponse
     }
 
@@ -202,6 +212,37 @@ struct ZentaoAPIClient: @unchecked Sendable {
             }
         }
 
+        DebugLogger.logResponsePreview(path: rootKeys.joined(separator: ","), data: data)
         throw ZentaoAPIError.invalidResponse
+    }
+
+    private func decodeArrayLikeValue<T: Decodable>(
+        _ value: Any,
+        as type: T.Type,
+        decoder: JSONDecoder
+    ) throws -> [T] {
+        let nestedData = try JSONSerialization.data(withJSONObject: value)
+
+        if let decoded = try? decoder.decode([T].self, from: nestedData) {
+            return decoded
+        }
+
+        if let decodedDictionary = try? decoder.decode([String: T].self, from: nestedData) {
+            return values(from: decodedDictionary)
+        }
+
+        throw ZentaoAPIError.invalidResponse
+    }
+
+    private func values<T>(from dictionary: [String: T]) -> [T] {
+        dictionary
+            .sorted { left, right in
+                if let leftInt = Int(left.key), let rightInt = Int(right.key) {
+                    return leftInt < rightInt
+                }
+
+                return left.key < right.key
+            }
+            .map(\.value)
     }
 }

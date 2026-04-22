@@ -28,6 +28,9 @@ final class AppState: ObservableObject {
         self.tokenStore = tokenStore
         self.apiClient = apiClient
         self.lastUpdatedAt = configStore.loadLastRefreshDate()
+        DebugLogger.log(
+            "AppState initialized; build=\(AppMetadata.current.buildConfiguration), logFile=\(DebugLogger.logFilePath)"
+        )
     }
 
     var config: AppConfig? {
@@ -70,8 +73,10 @@ final class AppState: ObservableObject {
     func bootstrap() async {
         guard !didBootstrap else { return }
         didBootstrap = true
+        DebugLogger.log("Bootstrap started")
 
         guard config != nil, currentToken != nil else {
+            DebugLogger.log("Bootstrap requires authentication; missing config or token")
             loadState = .authRequired
             return
         }
@@ -101,6 +106,7 @@ final class AppState: ObservableObject {
 
         loadState = .loading
         errorMessage = nil
+        DebugLogger.log("Login attempt started for account=\(account), baseURL=\(baseURL)")
 
         do {
             let token = try await apiClient.fetchToken(
@@ -126,17 +132,20 @@ final class AppState: ObservableObject {
             let newConfig = AppConfig(baseURL: baseURL, account: account)
             try configStore.save(newConfig)
             try tokenStore.saveToken(token, baseURL: baseURL, account: account)
+            DebugLogger.log("Login succeeded for account=\(account)")
             await refresh(force: true)
             return true
         } catch {
             loadState = .authRequired
             errorMessage = friendlyErrorMessage(error)
+            DebugLogger.log("Login failed for account=\(account): \(friendlyErrorMessage(error))")
             return false
         }
     }
 
     func refresh(force: Bool = true) async {
         guard let config, let token = currentToken else {
+            DebugLogger.log("Refresh skipped; missing config or token")
             loadState = .authRequired
             return
         }
@@ -145,6 +154,7 @@ final class AppState: ObservableObject {
            let lastUpdatedAt,
            Date().timeIntervalSince(lastUpdatedAt) < refreshCacheInterval,
            !taskWorks.isEmpty {
+            DebugLogger.log("Refresh skipped due to cache; taskCount=\(taskWorks.count)")
             loadState = .loaded
             return
         }
@@ -152,6 +162,7 @@ final class AppState: ObservableObject {
         let hadData = !taskWorks.isEmpty
         loadState = .loading
         errorMessage = nil
+        DebugLogger.log("Refresh started; force=\(force), hadData=\(hadData), baseURL=\(config.baseURL)")
 
         do {
             let user = try await apiClient.fetchCurrentUser(
@@ -209,6 +220,9 @@ final class AppState: ObservableObject {
             lastUpdatedAt = Date()
             configStore.saveLastRefreshDate(lastUpdatedAt)
             loadState = sorted.isEmpty ? .empty : .loaded
+            DebugLogger.log(
+                "Refresh succeeded; user=\(user.account), taskCount=\(sorted.count), totalConsumed=\(totalConsumed)"
+            )
         } catch {
             if let apiError = error as? ZentaoAPIError,
                case .unauthorized = apiError {
@@ -221,6 +235,7 @@ final class AppState: ObservableObject {
             }
 
             errorMessage = friendlyErrorMessage(error)
+            DebugLogger.log("Refresh failed: \(friendlyErrorMessage(error))")
         }
     }
 
@@ -235,6 +250,7 @@ final class AppState: ObservableObject {
         totalConsumed = 0
         errorMessage = nil
         loadState = .authRequired
+        DebugLogger.log("Logout completed for account=\(config.account)")
     }
 
     func openTask(_ task: TaskWork) {
@@ -247,6 +263,7 @@ final class AppState: ObservableObject {
     }
 
     func quitApplication() {
+        DebugLogger.log("Application terminating by user request")
         NSApp.terminate(nil)
     }
 

@@ -11,6 +11,12 @@ struct AppMetadata {
     static let current = AppMetadata(bundle: .main)
 
     init(bundle: Bundle) {
+        #if DEBUG
+        let fallbackConfiguration = "debug"
+        #else
+        let fallbackConfiguration = "release"
+        #endif
+
         displayName =
             bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ??
             bundle.object(forInfoDictionaryKey: "CFBundleName") as? String ??
@@ -23,12 +29,15 @@ struct AppMetadata {
             "-"
         buildConfiguration =
             bundle.object(forInfoDictionaryKey: "ZentaoBuildConfiguration") as? String ??
-            "debug"
+            fallbackConfiguration
         bundleIdentifier = bundle.bundleIdentifier ?? "com.codex.zentaobar"
         executableName =
             bundle.object(forInfoDictionaryKey: "ZentaoExecutableName") as? String ??
             bundle.object(forInfoDictionaryKey: "CFBundleExecutable") as? String ??
             "ZentaoBar"
     }
-}
 
+    var isDebugBuild: Bool {
+        buildConfiguration.lowercased() == "debug"
+    }
+}
