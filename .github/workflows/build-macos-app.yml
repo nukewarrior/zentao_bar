@@ -136,7 +136,7 @@ jobs:
         with:
           name: ${{ steps.meta.outputs.base_name }}
           path: |
-            ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip
+            ci-output/dist/ZentaoBar-${{ inputs.configuration }}.app.zip
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
           if-no-files-found: error
@@ -280,7 +280,7 @@ jobs:
         with:
           name: ${{ steps.meta.outputs.base_name }}
           path: |
-            ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip
+            ci-output/dist/ZentaoBar-${{ inputs.configuration }}.app.zip
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
             ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
           if-no-files-found: error
