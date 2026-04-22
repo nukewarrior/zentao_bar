@@ -6,7 +6,7 @@ struct AboutSettingsView: View {
 
     var body: some View {
         ScrollView {
-            HStack(alignment: .top, spacing: 0) {
+            VStack {
                 VStack(alignment: .leading, spacing: 14) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(metadata.displayName)
@@ -46,9 +46,8 @@ struct AboutSettingsView: View {
                 }
                 .frame(maxWidth: 620, alignment: .leading)
                 .padding(18)
-
-                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 

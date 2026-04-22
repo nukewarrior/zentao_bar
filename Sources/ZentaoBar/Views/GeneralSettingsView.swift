@@ -7,7 +7,7 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         ScrollView {
-            HStack(alignment: .top, spacing: 0) {
+            VStack {
                 VStack(alignment: .leading, spacing: 14) {
                     section("刷新与缓存") {
                         settingRow("缓存窗口", value: "60 秒")
@@ -68,9 +68,8 @@ struct GeneralSettingsView: View {
                 }
                 .frame(maxWidth: 620, alignment: .leading)
                 .padding(18)
-
-                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
