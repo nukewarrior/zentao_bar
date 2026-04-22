@@ -14,6 +14,15 @@ on:
         options:
           - debug
           - release
+      architecture:
+        description: Build architecture
+        required: true
+        default: apple-silicon
+        type: choice
+        options:
+          - apple-silicon
+          - intel
+          - universal
       version:
         description: App version (for example 0.1.0). Leave blank to use 0.1.<run_number>.
         required: false
@@ -32,6 +41,7 @@ jobs:
   build-native:
     name: Build ${{ matrix.arch_label }}
     runs-on: ${{ matrix.runner }}
+    if: ${{ inputs.architecture == 'universal' || inputs.architecture == matrix.arch_label }}
     strategy:
       fail-fast: false
       matrix:
@@ -152,6 +162,7 @@ jobs:
     name: Build universal app
     runs-on: macos-15
     needs: build-native
+    if: ${{ inputs.architecture == 'universal' }}
 
     steps:
       - name: Checkout
