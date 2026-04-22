@@ -9,11 +9,11 @@ on:
       configuration:
         description: Build configuration
         required: true
-        default: release
+        default: debug
         type: choice
         options:
-          - release
           - debug
+          - release
       version:
         description: App version (for example 0.1.0). Leave blank to use 0.1.<run_number>.
         required: false
