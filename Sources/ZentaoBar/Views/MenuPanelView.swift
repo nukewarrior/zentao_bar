@@ -35,30 +35,12 @@ struct MenuPanelView: View {
     @ViewBuilder
     private var statusBanner: some View {
         switch appState.loadState {
-        case .loading:
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("正在刷新...")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.top, 2)
         case .failed(let message):
             Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 2)
-        case .idle:
-            HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("正在刷新...")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.top, 2)
         default:
             EmptyView()
         }
@@ -88,6 +70,8 @@ struct MenuPanelView: View {
 
                 Spacer(minLength: 0)
 
+                refreshStatusIndicator
+
                 Button {
                     Task {
                         await appState.refresh(force: true)
@@ -101,6 +85,25 @@ struct MenuPanelView: View {
                 .foregroundStyle(.secondary)
                 .help("刷新")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var refreshStatusIndicator: some View {
+        if isRefreshingState {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.8)
+                Text("刷新中")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(width: 72, alignment: .trailing)
+            .transition(.opacity)
+        } else {
+            Color.clear
+                .frame(width: 72, height: 16)
         }
     }
 
@@ -300,5 +303,14 @@ struct MenuPanelView: View {
         }
 
         return false
+    }
+
+    private var isRefreshingState: Bool {
+        switch appState.loadState {
+        case .loading, .idle:
+            return true
+        default:
+            return false
+        }
     }
 }
