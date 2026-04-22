@@ -118,6 +118,20 @@ struct ZentaoAPIClient: @unchecked Sendable {
         )
     }
 
+    func fetchExecutions(baseURL: String, token: String) async throws -> [ZentaoExecution] {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/api.php/v1/executions?limit=1000",
+            token: token
+        )
+
+        return try decodeWrappedArray(
+            ZentaoExecution.self,
+            from: data,
+            rootKeys: ["data", "executions", "items"]
+        )
+    }
+
     func fetchProjectExecutions(baseURL: String, token: String, projectID: Int) async throws -> [ZentaoExecution] {
         let data = try await request(
             baseURL: baseURL,
@@ -132,10 +146,22 @@ struct ZentaoAPIClient: @unchecked Sendable {
         )
     }
 
-    func fetchExecutionTasks(baseURL: String, token: String, executionID: Int) async throws -> [ZentaoTask] {
+    func fetchExecutionTasks(
+        baseURL: String,
+        token: String,
+        executionID: Int,
+        status: String? = nil
+    ) async throws -> [ZentaoTask] {
+        let path: String
+        if let status, !status.isEmpty {
+            path = "/api.php/v1/executions/\(executionID)/tasks?status=\(status)&limit=1000"
+        } else {
+            path = "/api.php/v1/executions/\(executionID)/tasks"
+        }
+
         let data = try await request(
             baseURL: baseURL,
-            path: "/api.php/v1/executions/\(executionID)/tasks",
+            path: path,
             token: token
         )
 

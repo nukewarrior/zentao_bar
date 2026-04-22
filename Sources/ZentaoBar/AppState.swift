@@ -300,13 +300,64 @@ final class AppState: ObservableObject {
                 throw error
             }
 
-            DebugLogger.log("Falling back to project/execution task traversal due to restricted /tasks endpoint")
-            return try await fetchTasksViaProjectExecutions(
-                baseURL: baseURL,
-                token: token,
-                account: account
-            )
+            DebugLogger.log("Falling back to execution traversal due to restricted /tasks endpoint")
+
+            do {
+                return try await fetchTasksViaExecutions(
+                    baseURL: baseURL,
+                    token: token,
+                    account: account
+                )
+            } catch {
+                DebugLogger.log("Execution traversal fallback failed: \(friendlyErrorMessage(error))")
+                DebugLogger.log("Falling back to project/execution traversal as final recovery path")
+                return try await fetchTasksViaProjectExecutions(
+                    baseURL: baseURL,
+                    token: token,
+                    account: account
+                )
+            }
         }
+    }
+
+    private func fetchTasksViaExecutions(
+        baseURL: String,
+        token: String,
+        account: String
+    ) async throws -> [ZentaoTask] {
+        let executions = try await apiClient.fetchExecutions(
+            baseURL: baseURL,
+            token: token
+        )
+        DebugLogger.log("Loaded executions for fallback; count=\(executions.count)")
+
+        let apiClient = self.apiClient
+        var uniqueTasks: [Int: ZentaoTask] = [:]
+
+        try await withThrowingTaskGroup(of: [ZentaoTask].self) { group in
+            for execution in executions {
+                group.addTask {
+                    try await apiClient.fetchExecutionTasks(
+                        baseURL: baseURL,
+                        token: token,
+                        executionID: execution.id,
+                        status: "assignedtome"
+                    )
+                }
+            }
+
+            for try await tasks in group {
+                for task in tasks where task.assignedTo == account || task.assignedTo == nil {
+                    uniqueTasks[task.id] = task
+                }
+            }
+        }
+
+        let result = uniqueTasks.values.sorted { left, right in
+            left.id < right.id
+        }
+        DebugLogger.log("Filtered execution fallback tasks assigned to \(account); count=\(result.count)")
+        return result
     }
 
     private func fetchTasksViaProjectExecutions(
