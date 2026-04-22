@@ -59,7 +59,7 @@ struct MenuPanelView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 12) {
+            HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("今天工时：\(appState.formattedTotalWithUnit)")
                         .font(.system(size: 18, weight: .semibold))
@@ -99,11 +99,11 @@ struct MenuPanelView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .frame(width: 72, alignment: .trailing)
+            .frame(width: 72, height: 28, alignment: .trailing)
             .transition(.opacity)
         } else {
             Color.clear
-                .frame(width: 72, height: 16)
+                .frame(width: 72, height: 28)
         }
     }
 
