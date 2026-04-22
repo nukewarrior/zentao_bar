@@ -107,8 +107,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          APP_BASENAME="ZentaoBar-${{ inputs.configuration }}"
           APP_PATH="ci-output/bundles/ZentaoBar-${{ inputs.configuration }}.app"
-          ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip"
+          ZIP_PATH="ci-output/dist/${APP_BASENAME}.app.zip"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
 
           sh scripts/package-app.sh \
@@ -216,6 +217,7 @@ jobs:
 
           mkdir -p ci-output/logs ci-output/dist ci-output/bundles
 
+          APP_BASENAME="ZentaoBar-${{ inputs.configuration }}"
           detect_app_root() {
             local search_root="$1"
 
@@ -232,7 +234,7 @@ jobs:
           UNIVERSAL_APP="ci-output/bundles/ZentaoBar-${{ inputs.configuration }}.app"
           LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
-          ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip"
+          ZIP_PATH="ci-output/dist/${APP_BASENAME}.app.zip"
 
           if [[ -z "${ARM_APP}" ]]; then
             echo "error: failed to locate Apple Silicon .app bundle after artifact download" >&2
