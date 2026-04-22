@@ -10,9 +10,19 @@ struct GeneralSettingsView: View {
             VStack {
                 VStack(alignment: .leading, spacing: 14) {
                     section("刷新与缓存") {
-                        settingRow("缓存窗口", value: "60 秒")
-                        detailText("当前行为是缓存窗口，不是后台自动轮询。60 秒内再次触发非强制刷新会优先复用已有数据。")
-                        settingRow("自动刷新", value: "关闭（暂未启用后台轮询）")
+                        Toggle(
+                            "自动后台刷新",
+                            isOn: Binding(
+                                get: { preferences.autoRefreshEnabled },
+                                set: { preferences.setAutoRefreshEnabled($0) }
+                            )
+                        )
+
+                        intervalPickerRow
+                            .disabled(!preferences.autoRefreshEnabled)
+                            .opacity(preferences.autoRefreshEnabled ? 1 : 0.5)
+
+                        detailText("开启后应用会在后台按该间隔自动刷新；同一间隔也作为缓存有效期。手动点击刷新仍然会立即请求最新数据。")
                     }
 
                     section("窗口与显示") {
@@ -64,6 +74,7 @@ struct GeneralSettingsView: View {
                         settingRow("回退二", value: "executions / projects")
                         detailText("旧入口仍不可用时，再回退到执行和项目遍历策略。")
                         settingRow("当前任务数", value: "\(appState.currentTaskCount)")
+                        settingRow("当前刷新策略", value: appState.refreshPolicyDescription)
                     }
                 }
                 .frame(maxWidth: 620, alignment: .leading)
@@ -93,6 +104,24 @@ struct GeneralSettingsView: View {
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
             Spacer(minLength: 0)
+        }
+    }
+
+    private var intervalPickerRow: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Text("刷新间隔")
+                .font(.body.weight(.medium))
+                .frame(width: 88, alignment: .leading)
+
+            Picker("刷新间隔", selection: Binding(
+                get: { preferences.autoRefreshInterval },
+                set: { preferences.setAutoRefreshInterval($0) }
+            )) {
+                ForEach(RefreshIntervalOption.allCases) { option in
+                    Text(option.title).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
         }
     }
 

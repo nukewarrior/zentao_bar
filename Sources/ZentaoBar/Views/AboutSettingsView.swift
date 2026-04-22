@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 struct AboutSettingsView: View {
+    @EnvironmentObject private var appState: AppState
+
     private let metadata = AppMetadata.current
 
     var body: some View {
@@ -26,7 +28,7 @@ struct AboutSettingsView: View {
                         infoRow("可执行文件", metadata.executableName)
                         infoRow("调试日志", metadata.isDebugBuild ? "已启用" : "未启用")
                         infoRow("日志路径", metadata.isDebugBuild ? DebugLogger.logFilePath : "release 构建不写日志")
-                        infoRow("刷新策略", "60 秒缓存窗口，非后台轮询")
+                        infoRow("刷新策略", appState.refreshPolicyDescription)
 
                         HStack(spacing: 10) {
                             Button("复制版本信息") {

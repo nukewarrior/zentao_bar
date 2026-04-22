@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 
@@ -15,22 +16,28 @@ final class AppState: ObservableObject {
     private let configStore: AppConfigurationStore
     private let tokenStore: KeychainTokenStore
     private let apiClient: ZentaoAPIClient
-    private let refreshCacheInterval: TimeInterval = 60
+    private let preferences: PreferencesStore
 
     private var didBootstrap = false
+    private var cancellables = Set<AnyCancellable>()
+    private var autoRefreshTask: Task<Void, Never>?
+    private var isRefreshingInFlight = false
 
     init(
         configStore: AppConfigurationStore = AppConfigurationStore(),
         tokenStore: KeychainTokenStore = KeychainTokenStore(),
-        apiClient: ZentaoAPIClient = ZentaoAPIClient()
+        apiClient: ZentaoAPIClient = ZentaoAPIClient(),
+        preferences: PreferencesStore = .shared
     ) {
         self.configStore = configStore
         self.tokenStore = tokenStore
         self.apiClient = apiClient
+        self.preferences = preferences
         self.lastUpdatedAt = configStore.loadLastRefreshDate()
         DebugLogger.log(
             "AppState initialized; build=\(AppMetadata.current.buildConfiguration), logFile=\(DebugLogger.logFilePath)"
         )
+        observePreferences()
     }
 
     var config: AppConfig? {
@@ -43,6 +50,18 @@ final class AppState: ObservableObject {
 
     var currentTaskCount: Int {
         taskWorks.count
+    }
+
+    var refreshIntervalDescription: String {
+        preferences.autoRefreshInterval.title
+    }
+
+    var refreshPolicyDescription: String {
+        if preferences.autoRefreshEnabled {
+            return "后台每 \(preferences.autoRefreshInterval.title) 自动刷新，间隔同时作为缓存有效期"
+        }
+
+        return "后台自动刷新已关闭，缓存有效期为 \(preferences.autoRefreshInterval.title)"
     }
 
     var formattedTotal: String {
@@ -86,9 +105,11 @@ final class AppState: ObservableObject {
         guard config != nil, currentToken != nil else {
             DebugLogger.log("Bootstrap requires authentication; missing config or token")
             loadState = .authRequired
+            reconfigureAutoRefresh()
             return
         }
 
+        reconfigureAutoRefresh()
         await refresh(force: false)
     }
 
@@ -141,11 +162,13 @@ final class AppState: ObservableObject {
             try configStore.save(newConfig)
             try tokenStore.saveToken(token, baseURL: baseURL, account: account)
             DebugLogger.log("Login succeeded for account=\(account)")
+            reconfigureAutoRefresh()
             await refresh(force: true)
             return true
         } catch {
             loadState = .authRequired
             errorMessage = friendlyErrorMessage(error)
+            reconfigureAutoRefresh()
             DebugLogger.log("Login failed for account=\(account): \(friendlyErrorMessage(error))")
             return false
         }
@@ -155,12 +178,18 @@ final class AppState: ObservableObject {
         guard let config, let token = currentToken else {
             DebugLogger.log("Refresh skipped; missing config or token")
             loadState = .authRequired
+            reconfigureAutoRefresh()
+            return
+        }
+
+        if isRefreshingInFlight {
+            DebugLogger.log("Refresh skipped because another refresh is already running")
             return
         }
 
         if !force,
            let lastUpdatedAt,
-           Date().timeIntervalSince(lastUpdatedAt) < refreshCacheInterval,
+           Date().timeIntervalSince(lastUpdatedAt) < preferences.autoRefreshInterval.seconds,
            !taskWorks.isEmpty {
             DebugLogger.log("Refresh skipped due to cache; taskCount=\(taskWorks.count)")
             loadState = .loaded
@@ -168,9 +197,14 @@ final class AppState: ObservableObject {
         }
 
         let hadData = !taskWorks.isEmpty
+        isRefreshingInFlight = true
         loadState = .loading
         errorMessage = nil
         DebugLogger.log("Refresh started; force=\(force), hadData=\(hadData), baseURL=\(config.baseURL)")
+
+        defer {
+            isRefreshingInFlight = false
+        }
 
         do {
             let user = try await apiClient.fetchCurrentUser(
@@ -240,6 +274,7 @@ final class AppState: ObservableObject {
                case .unauthorized = apiError {
                 tokenStore.deleteToken(baseURL: config.baseURL, account: config.account)
                 loadState = .authRequired
+                reconfigureAutoRefresh()
             } else if hadData {
                 loadState = .loaded
             } else {
@@ -262,6 +297,7 @@ final class AppState: ObservableObject {
         totalConsumed = 0
         errorMessage = nil
         loadState = .authRequired
+        reconfigureAutoRefresh()
         DebugLogger.log("Logout completed for account=\(config.account)")
     }
 
@@ -290,6 +326,61 @@ final class AppState: ObservableObject {
     private func openURL(_ rawURL: String) {
         guard let url = URL(string: rawURL) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    private func observePreferences() {
+        preferences.$autoRefreshEnabled
+            .combineLatest(preferences.$autoRefreshInterval)
+            .sink { [weak self] _, _ in
+                Task { @MainActor [weak self] in
+                    self?.reconfigureAutoRefresh()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func reconfigureAutoRefresh() {
+        autoRefreshTask?.cancel()
+        autoRefreshTask = nil
+
+        guard preferences.autoRefreshEnabled else {
+            DebugLogger.log("Auto refresh disabled")
+            return
+        }
+
+        guard config != nil, currentToken != nil else {
+            DebugLogger.log("Auto refresh not scheduled because authentication is missing")
+            return
+        }
+
+        let interval = preferences.autoRefreshInterval.seconds
+        DebugLogger.log("Auto refresh scheduled every \(Int(interval)) seconds")
+
+        autoRefreshTask = Task { [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                } catch {
+                    break
+                }
+
+                if Task.isCancelled {
+                    break
+                }
+
+                await self.performAutoRefreshTick()
+            }
+        }
+    }
+
+    private func performAutoRefreshTick() async {
+        guard preferences.autoRefreshEnabled else { return }
+        guard config != nil, currentToken != nil else { return }
+
+        DebugLogger.log("Auto refresh tick fired")
+        await refresh(force: true)
     }
 
     private func fetchTasksForCurrentUser(
