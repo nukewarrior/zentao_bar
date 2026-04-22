@@ -177,8 +177,9 @@ struct ZentaoAPIClient: @unchecked Sendable {
             return nil
         }
 
+        let pathParts = path.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)
         let normalizedBasePath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let normalizedRequestPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let normalizedRequestPath = String(pathParts[0]).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
         if normalizedBasePath.isEmpty {
             components.path = "/" + normalizedRequestPath
@@ -186,6 +187,13 @@ struct ZentaoAPIClient: @unchecked Sendable {
             components.path = "/" + normalizedBasePath
         } else {
             components.path = "/" + normalizedBasePath + "/" + normalizedRequestPath
+        }
+
+        if pathParts.count > 1 {
+            let query = String(pathParts[1])
+            components.percentEncodedQuery = query.isEmpty ? nil : query
+        } else {
+            components.percentEncodedQuery = nil
         }
 
         return components.url
