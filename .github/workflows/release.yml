@@ -124,9 +124,20 @@ jobs:
             build 2>&1 | tee "${LOG_PATH}"
 
           SOURCE_APP="DerivedData/Build/Products/Release/ZentaoBar.app"
+          SOURCE_FRAMEWORK="DerivedData/Build/Products/Release/Sparkle.framework"
           TARGET_APP="ci-output/bundles/ZentaoBar.app"
           ZIP_PATH="ci-output/dist/ZentaoBar.app.zip"
           INFO_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build-info.txt"
+
+          if [[ -d "${SOURCE_FRAMEWORK}" ]]; then
+            mkdir -p "${SOURCE_APP}/Contents/Frameworks"
+            rm -rf "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
+            cp -R "${SOURCE_FRAMEWORK}" "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
+            codesign --force --sign - --timestamp=none \
+              "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
+            codesign --force --sign - --timestamp=none \
+              "${SOURCE_APP}"
+          fi
 
           rm -rf "${TARGET_APP}"
           cp -R "${SOURCE_APP}" "${TARGET_APP}"
