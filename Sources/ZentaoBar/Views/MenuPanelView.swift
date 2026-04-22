@@ -69,25 +69,34 @@ struct MenuPanelView: View {
             }
         }
         .frame(height: 210)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(.white.opacity(0.03))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(.white.opacity(0.08), lineWidth: 1)
-        )
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("今天工时：\(appState.formattedTotalWithUnit)")
-                .font(.system(size: 18, weight: .semibold))
-            Text(appState.lastUpdatedText)
-                .font(.caption)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("今天工时：\(appState.formattedTotalWithUnit)")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text(appState.lastUpdatedText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    Task {
+                        await appState.refresh(force: true)
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .help("刷新")
+            }
         }
     }
 
@@ -126,67 +135,28 @@ struct MenuPanelView: View {
     }
 
     private var footer: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             Divider()
                 .overlay(.white.opacity(0.08))
 
-            HStack(spacing: 8) {
-                Button("刷新") {
-                    Task {
-                        await appState.refresh(force: true)
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
-
-                Button("设置") {
+            HStack(spacing: 18) {
+                footerIconButton(systemImage: "gearshape.fill", title: "设置") {
                     openSettingsWindow()
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
-            }
 
-            HStack(spacing: 8) {
-                Button("打开禅道") {
+                footerIconButton(systemImage: "globe", title: "打开禅道") {
                     appState.openZentaoHome()
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
 
-                Menu {
-                    Button("关于...") {
-                        openAboutWindow()
-                    }
-
-                    Divider()
-
-                    Button("退出") {
-                        appState.quitApplication()
-                    }
-                } label: {
-                    HStack {
-                        Text("更多")
-                        Spacer(minLength: 4)
-                        Image(systemName: "chevron.down")
-                            .font(.caption2)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                footerIconButton(systemImage: "info.circle.fill", title: "关于") {
+                    openAboutWindow()
                 }
-                .menuStyle(.borderlessButton)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(.white.opacity(0.08))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .stroke(.white.opacity(0.08), lineWidth: 1)
-                )
-                .frame(maxWidth: .infinity)
+
+                footerIconButton(systemImage: "power", title: "退出") {
+                    appState.quitApplication()
+                }
+
+                Spacer(minLength: 0)
             }
         }
     }
@@ -216,36 +186,24 @@ struct MenuPanelView: View {
             Divider()
                 .overlay(.white.opacity(0.08))
 
-            HStack(spacing: 8) {
-                Button("登录") {
+            HStack(spacing: 18) {
+                footerIconButton(systemImage: "person.crop.circle.badge.exclamationmark", title: "登录") {
                     openSettingsWindow()
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
 
-                Button("设置") {
+                footerIconButton(systemImage: "gearshape.fill", title: "设置") {
                     openSettingsWindow()
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
-            }
 
-            HStack(spacing: 8) {
-                Button("关于") {
+                footerIconButton(systemImage: "info.circle.fill", title: "关于") {
                     openAboutWindow()
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
 
-                Button("退出") {
+                footerIconButton(systemImage: "power", title: "退出") {
                     appState.quitApplication()
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .frame(maxWidth: .infinity)
+
+                Spacer(minLength: 0)
             }
         }
     }
@@ -297,6 +255,18 @@ struct MenuPanelView: View {
     private func openAboutWindow() {
         NSApp.activate(ignoringOtherApps: true)
         openWindow(id: "about")
+    }
+
+    private func footerIconButton(systemImage: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 18, height: 18)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .help(title)
     }
 
     private var isFailedState: Bool {
