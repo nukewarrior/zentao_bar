@@ -27,5 +27,10 @@ struct ZentaoBarApp: App {
             SettingsView()
                 .environmentObject(appState)
         }
+
+        Window("关于 ZentaoBar", id: "about") {
+            AboutView()
+                .environmentObject(appState)
+        }
     }
 }

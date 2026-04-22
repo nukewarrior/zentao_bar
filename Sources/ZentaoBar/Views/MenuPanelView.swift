@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct MenuPanelView: View {
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var appState: AppState
 
@@ -103,6 +104,10 @@ struct MenuPanelView: View {
                 appState.openZentaoHome()
             }
 
+            Button("关于...") {
+                openAboutWindow()
+            }
+
             Button("退出") {
                 appState.quitApplication()
             }
@@ -135,6 +140,10 @@ struct MenuPanelView: View {
 
             Button("设置...") {
                 openSettingsWindow()
+            }
+
+            Button("关于...") {
+                openAboutWindow()
             }
 
             Button("退出") {
@@ -172,5 +181,10 @@ struct MenuPanelView: View {
     private func openSettingsWindow() {
         NSApp.activate(ignoringOtherApps: true)
         openSettings()
+    }
+
+    private func openAboutWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: "about")
     }
 }

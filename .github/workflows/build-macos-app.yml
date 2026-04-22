@@ -107,7 +107,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          APP_PATH="ci-output/bundles/${{ steps.meta.outputs.base_name }}.app"
+          APP_PATH="ci-output/bundles/ZentaoBar-${{ inputs.configuration }}.app"
           ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
 
@@ -115,7 +115,8 @@ jobs:
             "${{ steps.build.outputs.bin_path }}/ZentaoBar" \
             "${APP_PATH}" \
             "${{ steps.meta.outputs.version }}" \
-            "${{ steps.meta.outputs.build_number }}"
+            "${{ steps.meta.outputs.build_number }}" \
+            "${{ inputs.configuration }}"
 
           ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${ZIP_PATH}"
 
@@ -143,7 +144,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.meta.outputs.base_name }}-bundle
-          path: ci-output/bundles/${{ steps.meta.outputs.base_name }}.app
+          path: ci-output/bundles/ZentaoBar-${{ inputs.configuration }}.app
           if-no-files-found: error
 
   build-universal:
@@ -228,7 +229,7 @@ jobs:
 
           ARM_APP="$(detect_app_root "ci-input/apple-silicon")"
           INTEL_APP="$(detect_app_root "ci-input/intel")"
-          UNIVERSAL_APP="ci-output/bundles/${{ steps.meta.outputs.base_name }}.app"
+          UNIVERSAL_APP="ci-output/bundles/ZentaoBar-${{ inputs.configuration }}.app"
           LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
           ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.base_name }}.app.zip"

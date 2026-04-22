@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var appState: AppState
 
     @State private var baseURL = ""
@@ -44,6 +45,10 @@ struct SettingsView: View {
                 }
                 .disabled(appState.config == nil)
 
+                Button("关于...") {
+                    openWindow(id: "about")
+                }
+
                 Spacer()
 
                 Button("取消") {
@@ -78,4 +83,3 @@ struct SettingsView: View {
         }
     }
 }
-
