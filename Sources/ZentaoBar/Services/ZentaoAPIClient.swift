@@ -432,6 +432,13 @@ struct ZentaoAPIClient: @unchecked Sendable {
             for nested in array {
                 collectLegacyTasks(from: nested, into: &tasks)
             }
+            return
+        }
+
+        if let string = value as? String,
+           let nestedData = string.data(using: .utf8),
+           let nestedRoot = try? JSONSerialization.jsonObject(with: nestedData) {
+            collectLegacyTasks(from: nestedRoot, into: &tasks)
         }
     }
 
