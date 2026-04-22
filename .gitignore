@@ -3,3 +3,7 @@
 reference/
 .history/
 .idea/
+ZentaoBar.xcodeproj/
+ci-output/
+ci-pages/
+DerivedData/

@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AboutSettingsView: View {
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var sparkleUpdater: SparkleUpdater
 
     private let metadata = AppMetadata.current
 
@@ -29,6 +30,11 @@ struct AboutSettingsView: View {
                         infoRow("调试日志", metadata.isDebugBuild ? "已启用" : "未启用")
                         infoRow("日志路径", metadata.isDebugBuild ? DebugLogger.logFilePath : "release 构建不写日志")
                         infoRow("刷新策略", appState.refreshPolicyDescription)
+                        infoRow("更新源", sparkleUpdater.updateFeedDescription)
+                        infoRow("自动检查更新", sparkleUpdater.automaticallyChecksForUpdates ? "已开启" : "已关闭")
+                        infoRow("检查间隔", sparkleUpdater.updateIntervalDescription)
+                        infoRow("最新版本", sparkleUpdater.latestVersionDescription)
+                        infoRow("上次检查", sparkleUpdater.lastCheckedText)
 
                         HStack(spacing: 10) {
                             Button("复制版本信息") {
@@ -41,6 +47,12 @@ struct AboutSettingsView: View {
                             }
                             .buttonStyle(.bordered)
                             .disabled(!metadata.isDebugBuild)
+
+                            Button("立即检查更新") {
+                                sparkleUpdater.checkForUpdates(userInitiated: true)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(sparkleUpdater.isCheckingForUpdates || !sparkleUpdater.canCheckForUpdates)
                         }
                     }
                     .padding(16)
@@ -73,6 +85,8 @@ struct AboutSettingsView: View {
         Configuration: \(metadata.buildConfiguration)
         Bundle ID: \(metadata.bundleIdentifier)
         Executable: \(metadata.executableName)
+        Update Feed: \(sparkleUpdater.updateFeedDescription)
+        Auto Checks: \(sparkleUpdater.automaticallyChecksForUpdates ? "Enabled" : "Disabled")
         """
 
         let pasteboard = NSPasteboard.general

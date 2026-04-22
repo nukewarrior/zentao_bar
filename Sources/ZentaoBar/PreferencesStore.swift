@@ -22,6 +22,24 @@ enum RefreshIntervalOption: Double, CaseIterable, Identifiable {
     }
 }
 
+enum UpdateCheckIntervalOption: Double, CaseIterable, Identifiable {
+    case seconds30 = 30
+    case seconds60 = 60
+    case seconds120 = 120
+
+    var id: Double { rawValue }
+
+    var seconds: TimeInterval { rawValue }
+
+    var title: String {
+        "\(Int(rawValue)) 秒"
+    }
+
+    init?(seconds: TimeInterval) {
+        self.init(rawValue: seconds)
+    }
+}
+
 @MainActor
 final class PreferencesStore: ObservableObject {
     static let shared = PreferencesStore()
@@ -53,7 +71,6 @@ final class PreferencesStore: ObservableObject {
         if defaults.object(forKey: autoRefreshIntervalKey) == nil {
             defaults.set(RefreshIntervalOption.seconds60.rawValue, forKey: autoRefreshIntervalKey)
         }
-
         autoCloseAfterTaskClick = defaults.bool(forKey: autoCloseTaskKey)
         autoCloseAfterActionClick = defaults.bool(forKey: autoCloseActionKey)
         autoRefreshEnabled = defaults.bool(forKey: autoRefreshEnabledKey)

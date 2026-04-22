@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var preferences: PreferencesStore
+    @EnvironmentObject private var sparkleUpdater: SparkleUpdater
 
     @State private var baseURL = ""
     @State private var account = ""
@@ -33,8 +34,10 @@ struct SettingsView: View {
                     )
                 case .general:
                     GeneralSettingsView()
+                        .environmentObject(sparkleUpdater)
                 case .about:
                     AboutSettingsView()
+                        .environmentObject(sparkleUpdater)
                 }
             }
         }

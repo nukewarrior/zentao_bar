@@ -1,0 +1,62 @@
+name: ZentaoBar
+
+options:
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "14.0"
+
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.6.4
+
+settings:
+  base:
+    PRODUCT_NAME: ZentaoBar
+    PRODUCT_BUNDLE_IDENTIFIER: com.codex.zentaobar
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    INFOPLIST_FILE: Xcode/ZentaoBar-Info.plist
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    LD_RUNPATH_SEARCH_PATHS:
+      - "$(inherited)"
+      - "@executable_path/../Frameworks"
+    SPARKLE_FEED_URL: https://nukewarrior.github.io/zentao_bar/appcast.xml
+    SPARKLE_PUBLIC_ED_KEY: SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER
+
+targets:
+  ZentaoBar:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/ZentaoBar
+    resources:
+      - path: Xcode/Assets.xcassets
+    dependencies:
+      - package: Sparkle
+        product: Sparkle
+        embed: true
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: NO
+        PRODUCT_MODULE_NAME: ZentaoBar
+        EXECUTABLE_NAME: ZentaoBar
+        ENABLE_HARDENED_RUNTIME: NO
+        CODE_SIGNING_ALLOWED: YES
+        CODE_SIGNING_REQUIRED: YES
+        SWIFT_EMIT_LOC_STRINGS: NO
+
+schemes:
+  ZentaoBar:
+    build:
+      targets:
+        ZentaoBar: all
+    run:
+      config: Debug
+    archive:
+      config: Release

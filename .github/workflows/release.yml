@@ -2,6 +2,8 @@ name: Release macOS App
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PAGES_BASE_URL: https://nukewarrior.github.io/zentao_bar
+  APPCAST_URL: https://nukewarrior.github.io/zentao_bar/appcast.xml
 
 on:
   push:
@@ -16,21 +18,13 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
-  build-native:
-    name: Build ${{ matrix.arch_label }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            arch_label: apple-silicon
-            machine_arch: arm64
-          - runner: macos-15-intel
-            arch_label: intel
-            machine_arch: x86_64
+  release:
+    name: Build and publish release
+    runs-on: macos-15
 
     steps:
       - name: Checkout
@@ -57,12 +51,43 @@ jobs:
 
           VERSION="${TAG#v}"
           BUILD_NUMBER="${VERSION}"
-          BASE_NAME="ZentaoBar-${TAG}-release-${{ matrix.arch_label }}"
 
           echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
-          echo "base_name=${BASE_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Validate Sparkle secrets
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+          SPARKLE_PRIVATE_ED25519_KEY: ${{ secrets.SPARKLE_PRIVATE_ED25519_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${SPARKLE_PUBLIC_ED_KEY}" ]]; then
+            echo "error: SPARKLE_PUBLIC_ED_KEY is required" >&2
+            exit 1
+          fi
+
+          if [[ -z "${SPARKLE_PRIVATE_ED25519_KEY}" ]]; then
+            echo "error: SPARKLE_PRIVATE_ED25519_KEY is required" >&2
+            exit 1
+          fi
+
+      - name: Install XcodeGen
+        shell: bash
+        run: brew install xcodegen
+
+      - name: Install Python dependencies
+        shell: bash
+        run: python3 -m pip install --user pynacl
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Generate Xcode project
+        shell: bash
+        run: xcodegen generate
 
       - name: Show toolchain info
         shell: bash
@@ -73,165 +98,39 @@ jobs:
           swift --version
           uname -m
 
-      - name: Build executable
-        id: build
+      - name: Build release universal app
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p ci-output/logs ci-output/bundles ci-output/dist
+          mkdir -p ci-output/logs ci-output/bundles ci-output/dist ci-output/release
 
-          LOG_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log"
-          swift build -c release 2>&1 | tee "${LOG_PATH}"
-
-          BIN_PATH="$(swift build -c release --show-bin-path)"
-          echo "bin_path=${BIN_PATH}" >> "${GITHUB_OUTPUT}"
-          file "${BIN_PATH}/ZentaoBar" | tee -a "${LOG_PATH}"
-
-      - name: Package app bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APP_PATH="ci-output/bundles/ZentaoBar.app"
-          ZIP_PATH="ci-output/dist/ZentaoBar.app.zip"
-          INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
-
-          sh scripts/package-app.sh \
-            "${{ steps.build.outputs.bin_path }}/ZentaoBar" \
-            "${APP_PATH}" \
-            "${{ steps.meta.outputs.version }}" \
-            "${{ steps.meta.outputs.build_number }}" \
-            "release"
-
-          ditto -c -k --sequesterRsrc --keepParent "${APP_PATH}" "${ZIP_PATH}"
-
-          {
-            echo "product=ZentaoBar"
-            echo "tag=${{ steps.meta.outputs.tag }}"
-            echo "version=${{ steps.meta.outputs.version }}"
-            echo "build_number=${{ steps.meta.outputs.build_number }}"
-            echo "configuration=release"
-            echo "runner=${{ matrix.runner }}"
-            echo "machine_arch=${{ matrix.machine_arch }}"
-            echo "artifact_base_name=${{ steps.meta.outputs.base_name }}"
-          } > "${INFO_PATH}"
-
-      - name: Upload native artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.meta.outputs.base_name }}
-          path: |
-            ci-output/dist/ZentaoBar.app.zip
-            ci-output/logs/${{ steps.meta.outputs.base_name }}-build.log
-            ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt
-          if-no-files-found: error
-
-      - name: Upload app bundle for universal merge
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.meta.outputs.base_name }}-bundle
-          path: ci-output/bundles/ZentaoBar.app
-          if-no-files-found: error
-
-  release:
-    name: Create GitHub Release
-    runs-on: macos-15
-    needs: build-native
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-
-      - name: Resolve release metadata
-        id: meta
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
-
-          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "error: expected a semantic version tag like v1.2.3 but got ${TAG}" >&2
-            exit 1
-          fi
-
-          VERSION="${TAG#v}"
-          BUILD_NUMBER="${VERSION}"
-
-          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
-
-      - name: Download Apple Silicon bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: ZentaoBar-${{ steps.meta.outputs.tag }}-release-apple-silicon-bundle
-          path: ci-input/apple-silicon
-
-      - name: Download Intel bundle
-        uses: actions/download-artifact@v4
-        with:
-          name: ZentaoBar-${{ steps.meta.outputs.tag }}-release-intel-bundle
-          path: ci-input/intel
-
-      - name: Merge universal binary and package app
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mkdir -p ci-output/logs ci-output/dist ci-output/bundles
-
-          detect_app_root() {
-            local search_root="$1"
-
-            if [[ -d "${search_root}/Contents" ]]; then
-              echo "${search_root}"
-              return 0
-            fi
-
-            find "${search_root}" -type d -name '*.app' | head -n 1
-          }
-
-          ARM_APP="$(detect_app_root "ci-input/apple-silicon")"
-          INTEL_APP="$(detect_app_root "ci-input/intel")"
-          UNIVERSAL_APP="ci-output/bundles/ZentaoBar.app"
           LOG_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build.log"
-          INFO_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build-info.txt"
+
+          xcodebuild \
+            -project ZentaoBar.xcodeproj \
+            -scheme ZentaoBar \
+            -configuration Release \
+            -derivedDataPath DerivedData \
+            -destination "generic/platform=macOS" \
+            ARCHS="arm64 x86_64" \
+            ONLY_ACTIVE_ARCH=NO \
+            MARKETING_VERSION="${{ steps.meta.outputs.version }}" \
+            CURRENT_PROJECT_VERSION="${{ steps.meta.outputs.build_number }}" \
+            SPARKLE_FEED_URL="${APPCAST_URL}" \
+            SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY}" \
+            build 2>&1 | tee "${LOG_PATH}"
+
+          SOURCE_APP="DerivedData/Build/Products/Release/ZentaoBar.app"
+          TARGET_APP="ci-output/bundles/ZentaoBar.app"
           ZIP_PATH="ci-output/dist/ZentaoBar.app.zip"
+          INFO_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build-info.txt"
 
-          if [[ -z "${ARM_APP}" ]]; then
-            echo "error: failed to locate Apple Silicon .app bundle after artifact download" >&2
-            exit 1
-          fi
-
-          if [[ -z "${INTEL_APP}" ]]; then
-            echo "error: failed to locate Intel .app bundle after artifact download" >&2
-            exit 1
-          fi
-
-          cp -R "${ARM_APP}" "${UNIVERSAL_APP}"
-
-          lipo -create \
-            "${ARM_APP}/Contents/MacOS/ZentaoBar" \
-            "${INTEL_APP}/Contents/MacOS/ZentaoBar" \
-            -output "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
-
-          chmod +x "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
-
-          {
-            echo "Merged executable architectures:"
-            lipo -info "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
-            echo
-            echo "Executable file details:"
-            file "${UNIVERSAL_APP}/Contents/MacOS/ZentaoBar"
-          } | tee "${LOG_PATH}"
+          rm -rf "${TARGET_APP}"
+          cp -R "${SOURCE_APP}" "${TARGET_APP}"
+          ditto -c -k --sequesterRsrc --keepParent "${TARGET_APP}" "${ZIP_PATH}"
 
           {
             echo "product=ZentaoBar"
@@ -239,12 +138,20 @@ jobs:
             echo "version=${{ steps.meta.outputs.version }}"
             echo "build_number=${{ steps.meta.outputs.build_number }}"
             echo "configuration=release"
-            echo "runner=macos-15"
             echo "machine_arch=universal"
-            echo "artifact_base_name=ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal"
           } > "${INFO_PATH}"
 
-          ditto -c -k --sequesterRsrc --keepParent "${UNIVERSAL_APP}" "${ZIP_PATH}"
+      - name: Sign Sparkle archive
+        env:
+          SPARKLE_PRIVATE_ED25519_KEY: ${{ secrets.SPARKLE_PRIVATE_ED25519_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 scripts/sign_sparkle_archive.py \
+            --archive "ci-output/dist/ZentaoBar.app.zip" \
+            --private-key "${SPARKLE_PRIVATE_ED25519_KEY}" \
+            --signature-out "ci-output/release/ZentaoBar.app.zip.edSignature"
 
       - name: Create or update GitHub Release
         env:
@@ -254,27 +161,85 @@ jobs:
           set -euo pipefail
 
           TAG="${{ steps.meta.outputs.tag }}"
-          TITLE="${TAG}"
 
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release delete-asset "${TAG}" "ZentaoBar.app.zip" --yes || true
-            gh release delete-asset "${TAG}" "ZentaoBar-${TAG}-release-universal-build.log" --yes || true
-            gh release delete-asset "${TAG}" "ZentaoBar-${TAG}-release-universal-build-info.txt" --yes || true
-
             gh release edit "${TAG}" \
-              --title "${TITLE}" \
-              --notes-file <(gh api \
-                repos/${{ github.repository }}/releases/generate-notes \
-                -f tag_name="${TAG}" \
-                --jq '.body')
+              --title "${TAG}" \
+              --notes-file <(gh api repos/${{ github.repository }}/releases/generate-notes -f tag_name="${TAG}" --jq '.body')
           else
-            gh release create "${TAG}" \
-              --title "${TITLE}" \
-              --generate-notes
+            gh release create "${TAG}" --title "${TAG}" --generate-notes
           fi
 
-          gh release upload "${TAG}" \
-            ci-output/dist/ZentaoBar.app.zip \
-            ci-output/logs/ZentaoBar-${TAG}-release-universal-build.log \
-            ci-output/logs/ZentaoBar-${TAG}-release-universal-build-info.txt \
-            --clobber
+          gh release upload "${TAG}" ci-output/dist/ZentaoBar.app.zip --clobber
+          gh api repos/${{ github.repository }}/releases/tags/${TAG} > ci-output/release/release.json
+
+      - name: Prepare pages content
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+          RELEASE_BUILD_NUMBER: ${{ steps.meta.outputs.build_number }}
+          PAGES_BASE_URL: ${{ env.PAGES_BASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p ci-pages/notes ci-output/release
+
+          if ! curl -fsSL "${PAGES_BASE_URL}/releases.json" -o ci-output/release/releases-existing.json; then
+            echo "[]" > ci-output/release/releases-existing.json
+          fi
+
+          jq -r '.body' ci-output/release/release.json > ci-output/release/release-notes.md
+
+          python3 scripts/render_release_notes.py \
+            --title "ZentaoBar ${RELEASE_TAG}" \
+            --input ci-output/release/release-notes.md \
+            --output "ci-pages/notes/${RELEASE_TAG}.html"
+
+          ARCHIVE_URL="$(jq -r '.assets[] | select(.name == "ZentaoBar.app.zip") | .browser_download_url' ci-output/release/release.json)"
+          PUBLISHED_AT="$(jq -r '.published_at' ci-output/release/release.json)"
+          ARCHIVE_LENGTH="$(stat -f%z ci-output/dist/ZentaoBar.app.zip)"
+          ED_SIGNATURE="$(cat ci-output/release/ZentaoBar.app.zip.edSignature)"
+
+          python3 scripts/write_release_metadata.py \
+            --tag "${RELEASE_TAG}" \
+            --version "${RELEASE_VERSION}" \
+            --build-number "${RELEASE_BUILD_NUMBER}" \
+            --published-at "${PUBLISHED_AT}" \
+            --archive-url "${ARCHIVE_URL}" \
+            --archive-length "${ARCHIVE_LENGTH}" \
+            --ed-signature "${ED_SIGNATURE}" \
+            --notes-url "${PAGES_BASE_URL}/notes/${RELEASE_TAG}.html" \
+            --minimum-system-version "14.0" \
+            --output ci-output/release/current-release.json
+
+          python3 scripts/upsert_release_metadata.py \
+            --existing ci-output/release/releases-existing.json \
+            --entry ci-output/release/current-release.json \
+            --output ci-pages/releases.json
+
+          python3 scripts/generate_appcast.py \
+            --input ci-pages/releases.json \
+            --output ci-pages/appcast.xml \
+            --feed-title "ZentaoBar Updates" \
+            --site-url "${PAGES_BASE_URL}" \
+            --description "Sparkle appcast feed for ZentaoBar"
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ci-pages
+
+  deploy-pages:
+    name: Deploy appcast to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: release
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy pages
+        id: deployment
+        uses: actions/deploy-pages@v4
