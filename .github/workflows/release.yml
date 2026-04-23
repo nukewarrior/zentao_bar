@@ -128,6 +128,7 @@ jobs:
             build 2>&1 | tee "${LOG_PATH}"
 
           SOURCE_APP="DerivedData/Build/Products/Release/ZentaoBar.app"
+          SOURCE_FRAMEWORK="DerivedData/Build/Products/Release/Sparkle.framework"
           TARGET_APP="ci-output/bundles/ZentaoBar.app"
           ZIP_PATH="ci-output/dist/ZentaoBar.app.zip"
           INFO_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build-info.txt"
@@ -138,15 +139,25 @@ jobs:
             exit 1
           fi
 
-          if [[ ! -d "${FRAMEWORK_PATH}" ]]; then
-            echo "error: expected embedded Sparkle framework at ${FRAMEWORK_PATH}" >&2
+          if [[ ! -d "${SOURCE_FRAMEWORK}" ]]; then
+            echo "error: expected built Sparkle framework at ${SOURCE_FRAMEWORK}" >&2
             exit 1
           fi
+
+          mkdir -p "${SOURCE_APP}/Contents/Frameworks"
+          rm -rf "${FRAMEWORK_PATH}"
+          ditto "${SOURCE_FRAMEWORK}" "${FRAMEWORK_PATH}"
 
           if [[ ! -e "${FRAMEWORK_PATH}/Autoupdate" || ! -e "${FRAMEWORK_PATH}/Updater.app" ]]; then
             echo "error: embedded Sparkle framework is missing updater helper tools" >&2
             exit 1
           fi
+
+          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}/Autoupdate"
+          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}/Updater.app"
+          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}"
+          codesign --force --sign - --timestamp=none "${SOURCE_APP}"
+          codesign --verify --deep --strict --verbose=2 "${SOURCE_APP}"
 
           rm -rf "${TARGET_APP}"
           cp -R "${SOURCE_APP}" "${TARGET_APP}"
