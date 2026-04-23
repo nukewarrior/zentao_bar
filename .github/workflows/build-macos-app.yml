@@ -127,6 +127,8 @@ jobs:
           uname -m
 
       - name: Build app bundle
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -146,7 +148,7 @@ jobs:
             MARKETING_VERSION="${{ steps.meta.outputs.version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.meta.outputs.build_number }}" \
             SPARKLE_FEED_URL="${DEFAULT_FEED_URL}" \
-            SPARKLE_PUBLIC_ED_KEY="SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER" \
+            SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER}" \
             build 2>&1 | tee "${LOG_PATH}"
 
           SOURCE_APP="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/ZentaoBar.app"
@@ -269,6 +271,8 @@ jobs:
           uname -m
 
       - name: Build universal app bundle
+        env:
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -288,7 +292,7 @@ jobs:
             MARKETING_VERSION="${{ steps.meta.outputs.version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.meta.outputs.build_number }}" \
             SPARKLE_FEED_URL="${DEFAULT_FEED_URL}" \
-            SPARKLE_PUBLIC_ED_KEY="SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER" \
+            SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER}" \
             build 2>&1 | tee "${LOG_PATH}"
 
           SOURCE_APP="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/ZentaoBar.app"

@@ -38,9 +38,7 @@ final class SparkleUpdater: ObservableObject {
     }
 
     var publicKeyStateDescription: String {
-        guard let rawKey = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String,
-              !rawKey.isEmpty,
-              rawKey != "SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER" else {
+        guard hasConfiguredPublicKey else {
             return "未配置"
         }
         return "已配置"
@@ -77,6 +75,9 @@ final class SparkleUpdater: ObservableObject {
 #if canImport(Sparkle)
         log("start() requested")
         logEnvironmentSnapshot(context: "before-start")
+        guard validateConfiguration(context: "start") else {
+            return
+        }
         updaterController.startUpdater()
         logUpdaterState(context: "after-start")
         setStatusMessage("更新服务已启动")
@@ -88,6 +89,10 @@ final class SparkleUpdater: ObservableObject {
 
     func checkForUpdates(userInitiated: Bool) {
 #if canImport(Sparkle)
+        guard validateConfiguration(context: "check") else {
+            isCheckingForUpdates = false
+            return
+        }
         isCheckingForUpdates = true
         log("checkForUpdates(userInitiated: \(userInitiated))")
         logUpdaterState(context: "before-check")
@@ -213,6 +218,38 @@ final class SparkleUpdater: ObservableObject {
 
 #if canImport(Sparkle)
 private extension SparkleUpdater {
+    var hasConfiguredPublicKey: Bool {
+        guard let rawKey = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String else {
+            return false
+        }
+
+        return !rawKey.isEmpty && rawKey != "SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER"
+    }
+
+    var hasConfiguredFeedURL: Bool {
+        guard let rawURL = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String else {
+            return false
+        }
+
+        return !rawURL.isEmpty
+    }
+
+    func validateConfiguration(context: String) -> Bool {
+        guard hasConfiguredFeedURL else {
+            log("\(context) configuration invalid: missing SUFeedURL")
+            setStatusMessage("更新地址未配置，当前构建无法检查更新")
+            return false
+        }
+
+        guard hasConfiguredPublicKey else {
+            log("\(context) configuration invalid: missing SUPublicEDKey")
+            setStatusMessage("更新公钥未配置，当前构建无法检查更新")
+            return false
+        }
+
+        return true
+    }
+
     func logUpdaterState(context: String) {
         log(
             "\(context) state: canCheck=\(updaterController.updater.canCheckForUpdates), " +
