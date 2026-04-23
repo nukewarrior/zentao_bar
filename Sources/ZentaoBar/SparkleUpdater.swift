@@ -19,16 +19,22 @@ final class SparkleUpdater: ObservableObject {
 
 #if canImport(Sparkle)
     private let delegateBridge = SparkleUpdaterDelegateBridge()
-    private let updaterController: SPUStandardUpdaterController
+    private let userDriver: SPUStandardUserDriver
+    private let updater: SPUUpdater
 #endif
     private var cancellables = Set<AnyCancellable>()
 
     init() {
 #if canImport(Sparkle)
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: false,
-            updaterDelegate: delegateBridge,
-            userDriverDelegate: nil
+        userDriver = SPUStandardUserDriver(
+            hostBundle: .main,
+            delegate: nil
+        )
+        updater = SPUUpdater(
+            hostBundle: .main,
+            applicationBundle: .main,
+            userDriver: userDriver,
+            delegate: delegateBridge
         )
 #endif
         configure()
@@ -80,11 +86,16 @@ final class SparkleUpdater: ObservableObject {
             return
         }
         runDiagnosticsIfNeeded(context: "start")
-        updaterController.startUpdater()
-        logUpdaterState(context: "after-start")
-        setStatusMessage("更新服务已启动")
-        syncUpdaterPreferences()
-        scheduleDelayedStateSnapshots()
+        do {
+            try updater.start()
+            logUpdaterState(context: "after-start")
+            setStatusMessage("更新服务已启动")
+            syncUpdaterPreferences()
+            scheduleDelayedStateSnapshots()
+        } catch {
+            log("start failed: \(describe(error: error))")
+            setStatusMessage(error.localizedDescription)
+        }
 #else
         setStatusMessage("当前构建未集成 Sparkle")
 #endif
@@ -100,7 +111,7 @@ final class SparkleUpdater: ObservableObject {
         log("checkForUpdates(userInitiated: \(userInitiated))")
         logUpdaterState(context: "before-check")
         setStatusMessage(userInitiated ? "正在检查更新..." : "后台检查更新...")
-        updaterController.checkForUpdates(nil)
+        updater.checkForUpdates()
 #else
         setStatusMessage("当前构建未集成 Sparkle")
 #endif
@@ -108,7 +119,7 @@ final class SparkleUpdater: ObservableObject {
 
     func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
 #if canImport(Sparkle)
-        updaterController.updater.automaticallyChecksForUpdates = enabled
+        updater.automaticallyChecksForUpdates = enabled
         automaticallyChecksForUpdates = enabled
         log("automaticallyChecksForUpdates set to \(enabled)")
         setStatusMessage(enabled ? "已开启自动检查更新" : "已关闭自动检查更新")
@@ -119,7 +130,7 @@ final class SparkleUpdater: ObservableObject {
 
     func setUpdateCheckInterval(_ option: UpdateCheckIntervalOption) {
 #if canImport(Sparkle)
-        updaterController.updater.updateCheckInterval = option.seconds
+        updater.updateCheckInterval = option.seconds
         updateCheckIntervalOption = option
         log("updateCheckInterval set to \(option.seconds)s (\(option.title))")
         setStatusMessage("检查间隔已更新为 \(option.title)")
@@ -133,28 +144,28 @@ final class SparkleUpdater: ObservableObject {
         delegateBridge.owner = self
         log("configure()")
         logEnvironmentSnapshot(context: "configure")
-        updaterController.updater.publisher(for: \.canCheckForUpdates)
+        updater.publisher(for: \.canCheckForUpdates)
             .receive(on: RunLoop.main)
             .sink { [weak self] value in
                 self?.canCheckForUpdates = value
                 self?.log("canCheckForUpdates changed to \(value)")
             }
             .store(in: &cancellables)
-        updaterController.updater.publisher(for: \.automaticallyChecksForUpdates)
+        updater.publisher(for: \.automaticallyChecksForUpdates)
             .receive(on: RunLoop.main)
             .sink { [weak self] value in
                 self?.automaticallyChecksForUpdates = value
                 self?.log("automaticallyChecksForUpdates changed to \(value)")
             }
             .store(in: &cancellables)
-        updaterController.updater.publisher(for: \.sessionInProgress)
+        updater.publisher(for: \.sessionInProgress)
             .receive(on: RunLoop.main)
             .sink { [weak self] value in
                 self?.updaterSessionInProgress = value
                 self?.log("sessionInProgress changed to \(value)")
             }
             .store(in: &cancellables)
-        updaterController.updater.publisher(for: \.updateCheckInterval)
+        updater.publisher(for: \.updateCheckInterval)
             .map { UpdateCheckIntervalOption(seconds: $0) ?? .seconds120 }
             .receive(on: RunLoop.main)
             .sink { [weak self] value in
@@ -169,8 +180,8 @@ final class SparkleUpdater: ObservableObject {
 
 #if canImport(Sparkle)
     private func syncUpdaterPreferences() {
-        automaticallyChecksForUpdates = updaterController.updater.automaticallyChecksForUpdates
-        updateCheckIntervalOption = UpdateCheckIntervalOption(seconds: updaterController.updater.updateCheckInterval) ?? .seconds120
+        automaticallyChecksForUpdates = updater.automaticallyChecksForUpdates
+        updateCheckIntervalOption = UpdateCheckIntervalOption(seconds: updater.updateCheckInterval) ?? .seconds120
         logUpdaterState(context: "sync-preferences")
     }
 #endif
@@ -320,10 +331,10 @@ private extension SparkleUpdater {
 
     func logUpdaterState(context: String) {
         log(
-            "\(context) state: canCheck=\(updaterController.updater.canCheckForUpdates), " +
-            "sessionInProgress=\(updaterController.updater.sessionInProgress), " +
-            "autoChecks=\(updaterController.updater.automaticallyChecksForUpdates), " +
-            "interval=\(Int(updaterController.updater.updateCheckInterval))s"
+            "\(context) state: canCheck=\(updater.canCheckForUpdates), " +
+            "sessionInProgress=\(updater.sessionInProgress), " +
+            "autoChecks=\(updater.automaticallyChecksForUpdates), " +
+            "interval=\(Int(updater.updateCheckInterval))s"
         )
     }
 
