@@ -11,6 +11,7 @@ final class SparkleUpdater: ObservableObject {
     @Published private(set) var canCheckForUpdates = false
     @Published private(set) var isCheckingForUpdates = false
     @Published private(set) var automaticallyChecksForUpdates = false
+    @Published private(set) var updaterSessionInProgress = false
     @Published private(set) var updateCheckIntervalOption: UpdateCheckIntervalOption = .seconds120
     @Published private(set) var latestAvailableVersion: String?
     @Published private(set) var lastCheckedAt: Date?
@@ -78,10 +79,12 @@ final class SparkleUpdater: ObservableObject {
         guard validateConfiguration(context: "start") else {
             return
         }
+        runDiagnosticsIfNeeded(context: "start")
         updaterController.startUpdater()
         logUpdaterState(context: "after-start")
         setStatusMessage("更新服务已启动")
         syncUpdaterPreferences()
+        scheduleDelayedStateSnapshots()
 #else
         setStatusMessage("当前构建未集成 Sparkle")
 #endif
@@ -142,6 +145,13 @@ final class SparkleUpdater: ObservableObject {
             .sink { [weak self] value in
                 self?.automaticallyChecksForUpdates = value
                 self?.log("automaticallyChecksForUpdates changed to \(value)")
+            }
+            .store(in: &cancellables)
+        updaterController.updater.publisher(for: \.sessionInProgress)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] value in
+                self?.updaterSessionInProgress = value
+                self?.log("sessionInProgress changed to \(value)")
             }
             .store(in: &cancellables)
         updaterController.updater.publisher(for: \.updateCheckInterval)
@@ -216,6 +226,64 @@ final class SparkleUpdater: ObservableObject {
     }
 }
 
+private enum SparkleRuntimeDiagnostics {
+    static func logCodeSigningDiagnostics(context: String) {
+        let bundle = Bundle.main
+        let appPath = bundle.bundleURL.path
+        let frameworkPath = bundle.privateFrameworksURL?
+            .appendingPathComponent("Sparkle.framework", isDirectory: true)
+            .path
+        let autoupdatePath = frameworkPath.map { ($0 as NSString).appendingPathComponent("Autoupdate") }
+        let updaterAppPath = frameworkPath.map { ($0 as NSString).appendingPathComponent("Updater.app") }
+        let downloaderXPCPath = frameworkPath.map { ($0 as NSString).appendingPathComponent("XPCServices/Downloader.xpc") }
+        let installerXPCPath = frameworkPath.map { ($0 as NSString).appendingPathComponent("XPCServices/Installer.xpc") }
+
+        [
+            ("app", Optional(appPath)),
+            ("framework", frameworkPath),
+            ("autoupdate", autoupdatePath),
+            ("updaterApp", updaterAppPath),
+            ("downloaderXPC", downloaderXPCPath),
+            ("installerXPC", installerXPCPath)
+        ]
+        .forEach { label, path in
+            guard let path else {
+                DebugLogger.log("[Sparkle] \(context) codesign \(label): <missing path>")
+                return
+            }
+
+            let verification = runCodesign(arguments: ["--verify", "--deep", "--strict", "--verbose=2", path])
+            DebugLogger.log("[Sparkle] \(context) codesign \(label) verify exit=\(verification.status) output=\(verification.output)")
+
+            let display = runCodesign(arguments: ["-dvv", path])
+            DebugLogger.log("[Sparkle] \(context) codesign \(label) display exit=\(display.status) output=\(display.output)")
+        }
+    }
+
+    static func runCodesign(arguments: [String]) -> (status: Int32, output: String) {
+        let process = Process()
+        let outputPipe = Pipe()
+
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        process.arguments = arguments
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            let rawOutput = String(data: data, encoding: .utf8) ?? "<non-utf8 output>"
+            let normalizedOutput = rawOutput
+                .replacingOccurrences(of: "\n", with: " | ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return (process.terminationStatus, normalizedOutput.isEmpty ? "<empty>" : normalizedOutput)
+        } catch {
+            return (-1, "failed to run codesign: \(error.localizedDescription)")
+        }
+    }
+}
+
 #if canImport(Sparkle)
 private extension SparkleUpdater {
     var hasConfiguredPublicKey: Bool {
@@ -253,9 +321,33 @@ private extension SparkleUpdater {
     func logUpdaterState(context: String) {
         log(
             "\(context) state: canCheck=\(updaterController.updater.canCheckForUpdates), " +
+            "sessionInProgress=\(updaterController.updater.sessionInProgress), " +
             "autoChecks=\(updaterController.updater.automaticallyChecksForUpdates), " +
             "interval=\(Int(updaterController.updater.updateCheckInterval))s"
         )
+    }
+
+    func scheduleDelayedStateSnapshots() {
+        guard DebugLogger.isEnabled else {
+            return
+        }
+
+        for delay in [1, 5, 15] {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                self?.logUpdaterState(context: "after-start+\(delay)s")
+            }
+        }
+    }
+
+    func runDiagnosticsIfNeeded(context: String) {
+        guard DebugLogger.isEnabled else {
+            return
+        }
+
+        Task.detached(priority: .utility) {
+            SparkleRuntimeDiagnostics.logCodeSigningDiagnostics(context: context)
+        }
     }
 
     func logEnvironmentSnapshot(context: String) {
