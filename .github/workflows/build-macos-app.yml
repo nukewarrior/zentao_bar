@@ -150,24 +150,24 @@ jobs:
             build 2>&1 | tee "${LOG_PATH}"
 
           SOURCE_APP="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/ZentaoBar.app"
-          SOURCE_FRAMEWORK="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/Sparkle.framework"
           TARGET_APP="ci-output/bundles/${{ steps.meta.outputs.app_basename }}.app"
           ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.app_basename }}.app.zip"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
+          FRAMEWORK_PATH="${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
 
           if [[ ! -f "${SOURCE_APP}/Contents/Resources/Assets.car" ]]; then
             echo "error: expected compiled asset catalog at ${SOURCE_APP}/Contents/Resources/Assets.car" >&2
             exit 1
           fi
 
-          if [[ -d "${SOURCE_FRAMEWORK}" ]]; then
-            mkdir -p "${SOURCE_APP}/Contents/Frameworks"
-            rm -rf "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
-            cp -R "${SOURCE_FRAMEWORK}" "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
-            codesign --force --sign - --timestamp=none \
-              "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
-            codesign --force --sign - --timestamp=none \
-              "${SOURCE_APP}"
+          if [[ ! -d "${FRAMEWORK_PATH}" ]]; then
+            echo "error: expected embedded Sparkle framework at ${FRAMEWORK_PATH}" >&2
+            exit 1
+          fi
+
+          if [[ ! -e "${FRAMEWORK_PATH}/Autoupdate" || ! -e "${FRAMEWORK_PATH}/Updater.app" ]]; then
+            echo "error: embedded Sparkle framework is missing updater helper tools" >&2
+            exit 1
           fi
 
           rm -rf "${TARGET_APP}"
@@ -281,19 +281,24 @@ jobs:
             build 2>&1 | tee "${LOG_PATH}"
 
           SOURCE_APP="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/ZentaoBar.app"
-          SOURCE_FRAMEWORK="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/Sparkle.framework"
           TARGET_APP="ci-output/bundles/${{ steps.meta.outputs.app_basename }}.app"
           ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.app_basename }}.app.zip"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
+          FRAMEWORK_PATH="${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
 
-          if [[ -d "${SOURCE_FRAMEWORK}" ]]; then
-            mkdir -p "${SOURCE_APP}/Contents/Frameworks"
-            rm -rf "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
-            cp -R "${SOURCE_FRAMEWORK}" "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
-            codesign --force --sign - --timestamp=none \
-              "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
-            codesign --force --sign - --timestamp=none \
-              "${SOURCE_APP}"
+          if [[ ! -f "${SOURCE_APP}/Contents/Resources/Assets.car" ]]; then
+            echo "error: expected compiled asset catalog at ${SOURCE_APP}/Contents/Resources/Assets.car" >&2
+            exit 1
+          fi
+
+          if [[ ! -d "${FRAMEWORK_PATH}" ]]; then
+            echo "error: expected embedded Sparkle framework at ${FRAMEWORK_PATH}" >&2
+            exit 1
+          fi
+
+          if [[ ! -e "${FRAMEWORK_PATH}/Autoupdate" || ! -e "${FRAMEWORK_PATH}/Updater.app" ]]; then
+            echo "error: embedded Sparkle framework is missing updater helper tools" >&2
+            exit 1
           fi
 
           rm -rf "${TARGET_APP}"

@@ -39,7 +39,7 @@ targets:
     dependencies:
       - package: Sparkle
         product: Sparkle
-        embed: false
+        embed: true
     settings:
       base:
         GENERATE_INFOPLIST_FILE: NO
