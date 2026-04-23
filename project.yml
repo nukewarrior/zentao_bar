@@ -35,7 +35,6 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - path: Sources/ZentaoBar
-    resources:
       - path: Xcode/Assets.xcassets
     dependencies:
       - package: Sparkle

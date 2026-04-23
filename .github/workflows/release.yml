@@ -133,6 +133,11 @@ jobs:
           ZIP_PATH="ci-output/dist/ZentaoBar.app.zip"
           INFO_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build-info.txt"
 
+          if [[ ! -f "${SOURCE_APP}/Contents/Resources/Assets.car" ]]; then
+            echo "error: expected compiled asset catalog at ${SOURCE_APP}/Contents/Resources/Assets.car" >&2
+            exit 1
+          fi
+
           if [[ -d "${SOURCE_FRAMEWORK}" ]]; then
             mkdir -p "${SOURCE_APP}/Contents/Frameworks"
             rm -rf "${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
