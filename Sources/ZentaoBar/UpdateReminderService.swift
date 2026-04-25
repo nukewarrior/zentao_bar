@@ -13,7 +13,7 @@ private struct ReleaseMetadataEntry: Decodable {
         Self.iso8601Formatter.date(from: publishedAt)
     }
 
-    private static let iso8601Formatter = ISO8601DateFormatter()
+    private static nonisolated(unsafe) let iso8601Formatter = ISO8601DateFormatter()
 }
 
 private struct ReleaseEndpointConfiguration {
