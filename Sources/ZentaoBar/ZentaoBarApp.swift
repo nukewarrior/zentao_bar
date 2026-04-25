@@ -4,7 +4,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Task { @MainActor in
-            SparkleUpdater.shared.start()
+            UpdateReminderService.shared.start()
             await AppState.shared.bootstrap()
         }
     }
@@ -15,14 +15,14 @@ struct ZentaoBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appState = AppState.shared
     @StateObject private var preferences = PreferencesStore.shared
-    @StateObject private var sparkleUpdater = SparkleUpdater.shared
+    @StateObject private var updateReminder = UpdateReminderService.shared
 
     var body: some Scene {
         MenuBarExtra {
             MenuPanelView()
                 .environmentObject(appState)
                 .environmentObject(preferences)
-                .environmentObject(sparkleUpdater)
+                .environmentObject(updateReminder)
         } label: {
             Text(appState.formattedTotal)
         }
@@ -32,14 +32,14 @@ struct ZentaoBarApp: App {
             SettingsView()
                 .environmentObject(appState)
                 .environmentObject(preferences)
-                .environmentObject(sparkleUpdater)
+                .environmentObject(updateReminder)
         }
 
         Window("关于 ZentaoBar", id: "about") {
             AboutView()
                 .environmentObject(appState)
                 .environmentObject(preferences)
-                .environmentObject(sparkleUpdater)
+                .environmentObject(updateReminder)
         }
     }
 }

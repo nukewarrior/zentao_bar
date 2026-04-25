@@ -3,7 +3,6 @@ name: Release macOS App
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   PAGES_BASE_URL: https://nukewarrior.github.io/zentao_bar
-  APPCAST_URL: https://nukewarrior.github.io/zentao_bar/appcast.xml
 
 on:
   push:
@@ -56,35 +55,9 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "build_number=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
 
-      - name: Validate Sparkle secrets
-        env:
-          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
-          SPARKLE_PRIVATE_ED25519_KEY: ${{ secrets.SPARKLE_PRIVATE_ED25519_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ -z "${SPARKLE_PUBLIC_ED_KEY}" ]]; then
-            echo "error: SPARKLE_PUBLIC_ED_KEY is required" >&2
-            exit 1
-          fi
-
-          if [[ -z "${SPARKLE_PRIVATE_ED25519_KEY}" ]]; then
-            echo "error: SPARKLE_PRIVATE_ED25519_KEY is required" >&2
-            exit 1
-          fi
-
       - name: Install XcodeGen
         shell: bash
         run: brew install xcodegen
-
-      - name: Create Python virtualenv
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m venv .venv
-          ./.venv/bin/python -m pip install --upgrade pip
-          ./.venv/bin/python -m pip install pynacl
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
@@ -103,8 +76,6 @@ jobs:
           uname -m
 
       - name: Build release universal app
-        env:
-          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -123,40 +94,18 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             MARKETING_VERSION="${{ steps.meta.outputs.version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.meta.outputs.build_number }}" \
-            SPARKLE_FEED_URL="${APPCAST_URL}" \
-            SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY}" \
             build 2>&1 | tee "${LOG_PATH}"
 
           SOURCE_APP="DerivedData/Build/Products/Release/ZentaoBar.app"
-          SOURCE_FRAMEWORK="DerivedData/Build/Products/Release/Sparkle.framework"
           TARGET_APP="ci-output/bundles/ZentaoBar.app"
           ZIP_PATH="ci-output/dist/ZentaoBar.app.zip"
           INFO_PATH="ci-output/logs/ZentaoBar-${{ steps.meta.outputs.tag }}-release-universal-build-info.txt"
-          FRAMEWORK_PATH="${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
 
           if [[ ! -f "${SOURCE_APP}/Contents/Resources/Assets.car" ]]; then
             echo "error: expected compiled asset catalog at ${SOURCE_APP}/Contents/Resources/Assets.car" >&2
             exit 1
           fi
 
-          if [[ ! -d "${SOURCE_FRAMEWORK}" ]]; then
-            echo "error: expected built Sparkle framework at ${SOURCE_FRAMEWORK}" >&2
-            exit 1
-          fi
-
-          mkdir -p "${SOURCE_APP}/Contents/Frameworks"
-          rm -rf "${FRAMEWORK_PATH}"
-          ditto "${SOURCE_FRAMEWORK}" "${FRAMEWORK_PATH}"
-
-          if [[ ! -e "${FRAMEWORK_PATH}/Autoupdate" || ! -e "${FRAMEWORK_PATH}/Updater.app" ]]; then
-            echo "error: embedded Sparkle framework is missing updater helper tools" >&2
-            exit 1
-          fi
-
-          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}/Autoupdate"
-          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}/Updater.app"
-          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}"
-          codesign --force --sign - --timestamp=none "${SOURCE_APP}"
           codesign --verify --deep --strict --verbose=2 "${SOURCE_APP}"
 
           rm -rf "${TARGET_APP}"
@@ -171,18 +120,6 @@ jobs:
             echo "configuration=release"
             echo "machine_arch=universal"
           } > "${INFO_PATH}"
-
-      - name: Sign Sparkle archive
-        env:
-          SPARKLE_PRIVATE_ED25519_KEY: ${{ secrets.SPARKLE_PRIVATE_ED25519_KEY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          ./.venv/bin/python scripts/sign_sparkle_archive.py \
-            --archive "ci-output/dist/ZentaoBar.app.zip" \
-            --private-key "${SPARKLE_PRIVATE_ED25519_KEY}" \
-            --signature-out "ci-output/release/ZentaoBar.app.zip.edSignature"
 
       - name: Create or update GitHub Release
         env:
@@ -223,39 +160,29 @@ jobs:
 
           jq -r '.body' ci-output/release/release.json > ci-output/release/release-notes.md
 
-          ./.venv/bin/python scripts/render_release_notes.py \
+          python3 scripts/render_release_notes.py \
             --title "ZentaoBar ${RELEASE_TAG}" \
             --input ci-output/release/release-notes.md \
             --output "ci-pages/notes/${RELEASE_TAG}.html"
 
           ARCHIVE_URL="$(jq -r '.assets[] | select(.name == "ZentaoBar.app.zip") | .browser_download_url' ci-output/release/release.json)"
           PUBLISHED_AT="$(jq -r '.published_at' ci-output/release/release.json)"
-          ARCHIVE_LENGTH="$(stat -f%z ci-output/dist/ZentaoBar.app.zip)"
-          ED_SIGNATURE="$(cat ci-output/release/ZentaoBar.app.zip.edSignature)"
+          RELEASE_PAGE_URL="$(jq -r '.html_url' ci-output/release/release.json)"
 
-          ./.venv/bin/python scripts/write_release_metadata.py \
+          python3 scripts/write_release_metadata.py \
             --tag "${RELEASE_TAG}" \
             --version "${RELEASE_VERSION}" \
             --build-number "${RELEASE_BUILD_NUMBER}" \
             --published-at "${PUBLISHED_AT}" \
             --archive-url "${ARCHIVE_URL}" \
-            --archive-length "${ARCHIVE_LENGTH}" \
-            --ed-signature "${ED_SIGNATURE}" \
+            --release-page-url "${RELEASE_PAGE_URL}" \
             --notes-url "${PAGES_BASE_URL}/notes/${RELEASE_TAG}.html" \
-            --minimum-system-version "14.0" \
             --output ci-output/release/current-release.json
 
-          ./.venv/bin/python scripts/upsert_release_metadata.py \
+          python3 scripts/upsert_release_metadata.py \
             --existing ci-output/release/releases-existing.json \
             --entry ci-output/release/current-release.json \
             --output ci-pages/releases.json
-
-          ./.venv/bin/python scripts/generate_appcast.py \
-            --input ci-pages/releases.json \
-            --output ci-pages/appcast.xml \
-            --feed-title "ZentaoBar Updates" \
-            --site-url "${PAGES_BASE_URL}" \
-            --description "Sparkle appcast feed for ZentaoBar"
 
       - name: Upload pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -263,7 +190,7 @@ jobs:
           path: ci-pages
 
   deploy-pages:
-    name: Deploy appcast to GitHub Pages
+    name: Deploy release metadata to GitHub Pages
     runs-on: ubuntu-latest
     needs: release
     environment:

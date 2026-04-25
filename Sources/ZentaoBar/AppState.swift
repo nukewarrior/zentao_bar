@@ -388,13 +388,13 @@ final class AppState: ObservableObject {
         token: String,
         account: String
     ) async throws -> [ZentaoTask] {
+        let assignedTasks: [ZentaoTask]
         do {
-            let tasks = try await apiClient.fetchAssignedTasks(
+            assignedTasks = try await apiClient.fetchAssignedTasks(
                 baseURL: baseURL,
                 token: token
             )
-            DebugLogger.log("Loaded assigned tasks from /tasks?assignedTo=me; count=\(tasks.count)")
-            return tasks
+            DebugLogger.log("Loaded assigned tasks from /tasks?assignedTo=me; count=\(assignedTasks.count)")
         } catch let error as ZentaoAPIError {
             guard case let .requestFailed(statusCode, message) = error,
                   statusCode == 403,
@@ -405,32 +405,54 @@ final class AppState: ObservableObject {
             DebugLogger.log("Falling back to legacy my-work task entry due to restricted /tasks endpoint")
 
             do {
-                return try await apiClient.fetchLegacyAssignedTasks(
+                assignedTasks = try await apiClient.fetchLegacyAssignedTasks(
                     baseURL: baseURL,
                     token: token
                 )
             } catch {
                 DebugLogger.log("Legacy my-work fallback failed: \(friendlyErrorMessage(error))")
-            }
 
-            DebugLogger.log("Falling back to execution traversal due to restricted /tasks endpoint")
+                DebugLogger.log("Falling back to execution traversal due to restricted /tasks endpoint")
 
-            do {
-                return try await fetchTasksViaExecutions(
-                    baseURL: baseURL,
-                    token: token,
-                    account: account
-                )
-            } catch {
-                DebugLogger.log("Execution traversal fallback failed: \(friendlyErrorMessage(error))")
-                DebugLogger.log("Falling back to project/execution traversal as final recovery path")
-                return try await fetchTasksViaProjectExecutions(
-                    baseURL: baseURL,
-                    token: token,
-                    account: account
-                )
+                do {
+                    assignedTasks = try await fetchTasksViaExecutions(
+                        baseURL: baseURL,
+                        token: token,
+                        account: account
+                    )
+                } catch {
+                    DebugLogger.log("Execution traversal fallback failed: \(friendlyErrorMessage(error))")
+                    DebugLogger.log("Falling back to project/execution traversal as final recovery path")
+                    assignedTasks = try await fetchTasksViaProjectExecutions(
+                        baseURL: baseURL,
+                        token: token,
+                        account: account
+                    )
+                }
             }
         }
+
+        // 补充获取我参与过的任务（包括已关闭的），与 assignedTo=me 的任务合并去重
+        let involvedTasks = (try? await apiClient.fetchMyInvolvedTasks(
+            baseURL: baseURL,
+            token: token
+        )) ?? []
+        DebugLogger.log("Loaded involved tasks from /my-contribute-task-myInvolved; count=\(involvedTasks.count)")
+
+        // 合并去重：优先保留 assignedTo=me 的任务
+        var mergedTasks: [Int: ZentaoTask] = [:]
+        for task in assignedTasks {
+            mergedTasks[task.id] = task
+        }
+        for task in involvedTasks {
+            if mergedTasks[task.id] == nil {
+                mergedTasks[task.id] = task
+            }
+        }
+
+        let result = mergedTasks.values.sorted { $0.id < $1.id }
+        DebugLogger.log("Merged tasks: assigned=\(assignedTasks.count), involved=\(involvedTasks.count), total=\(result.count)")
+        return result
     }
 
     private func fetchTasksViaExecutions(

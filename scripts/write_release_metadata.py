@@ -13,16 +13,14 @@ def iso_to_rfc2822(value: str) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Write a Sparkle release metadata entry.")
+    parser = argparse.ArgumentParser(description="Write a release metadata entry.")
     parser.add_argument("--tag", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--build-number", required=True)
     parser.add_argument("--published-at", required=True)
     parser.add_argument("--archive-url", required=True)
-    parser.add_argument("--archive-length", required=True, type=int)
-    parser.add_argument("--ed-signature", required=True)
+    parser.add_argument("--release-page-url", required=True)
     parser.add_argument("--notes-url", required=True)
-    parser.add_argument("--minimum-system-version", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -33,10 +31,8 @@ def main() -> int:
         "publishedAt": args.published_at,
         "pubDate": iso_to_rfc2822(args.published_at),
         "archiveURL": args.archive_url,
-        "archiveLength": args.archive_length,
-        "edSignature": args.ed_signature,
+        "releasePageURL": args.release_page_url,
         "notesURL": args.notes_url,
-        "minimumSystemVersion": args.minimum_system_version,
     }
 
     output_path = Path(args.output)

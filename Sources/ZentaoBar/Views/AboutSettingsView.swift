@@ -3,7 +3,8 @@ import SwiftUI
 
 struct AboutSettingsView: View {
     @EnvironmentObject private var appState: AppState
-    @EnvironmentObject private var sparkleUpdater: SparkleUpdater
+    @EnvironmentObject private var preferences: PreferencesStore
+    @EnvironmentObject private var updateReminder: UpdateReminderService
 
     private let metadata = AppMetadata.current
 
@@ -30,11 +31,13 @@ struct AboutSettingsView: View {
                         infoRow("调试日志", metadata.isDebugBuild ? "已启用" : "未启用")
                         infoRow("日志路径", metadata.isDebugBuild ? DebugLogger.logFilePath : "release 构建不写日志")
                         infoRow("刷新策略", appState.refreshPolicyDescription)
-                        infoRow("更新源", sparkleUpdater.updateFeedDescription)
-                        infoRow("自动检查更新", sparkleUpdater.automaticallyChecksForUpdates ? "已开启" : "已关闭")
-                        infoRow("检查间隔", sparkleUpdater.updateIntervalDescription)
-                        infoRow("最新版本", sparkleUpdater.latestVersionDescription)
-                        infoRow("上次检查", sparkleUpdater.lastCheckedText)
+                        infoRow("版本源", updateReminder.releasesMetadataURLDescription)
+                        infoRow("发布仓库", updateReminder.repositoryURLDescription)
+                        infoRow("自动检查", preferences.updateChecksEnabled ? "已开启" : "已关闭")
+                        infoRow("检查间隔", preferences.updateCheckInterval.title)
+                        infoRow("最新版本", updateReminder.latestVersionDescription)
+                        infoRow("发布时间", updateReminder.latestPublishedText)
+                        infoRow("上次检查", updateReminder.lastCheckedText)
 
                         HStack(spacing: 10) {
                             Button("复制版本信息") {
@@ -48,11 +51,17 @@ struct AboutSettingsView: View {
                             .buttonStyle(.bordered)
                             .disabled(!metadata.isDebugBuild)
 
-                            Button("立即检查更新") {
-                                sparkleUpdater.checkForUpdates(userInitiated: true)
+                            Button("立即检查新版本") {
+                                updateReminder.checkForUpdates(userInitiated: true)
                             }
                             .buttonStyle(.bordered)
-                            .disabled(sparkleUpdater.isCheckingForUpdates || !sparkleUpdater.canCheckForUpdates)
+                            .disabled(updateReminder.isCheckingForUpdates)
+
+                            Button("前往下载最新版") {
+                                updateReminder.openLatestReleasePage()
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(!updateReminder.canOpenLatestReleasePage)
                         }
                     }
                     .padding(16)
@@ -85,8 +94,10 @@ struct AboutSettingsView: View {
         Configuration: \(metadata.buildConfiguration)
         Bundle ID: \(metadata.bundleIdentifier)
         Executable: \(metadata.executableName)
-        Update Feed: \(sparkleUpdater.updateFeedDescription)
-        Auto Checks: \(sparkleUpdater.automaticallyChecksForUpdates ? "Enabled" : "Disabled")
+        Release Metadata: \(updateReminder.releasesMetadataURLDescription)
+        Repository: \(updateReminder.repositoryURLDescription)
+        Auto Checks: \(preferences.updateChecksEnabled ? "Enabled" : "Disabled")
+        Latest Version: \(updateReminder.latestVersionDescription)
         """
 
         let pasteboard = NSPasteboard.general

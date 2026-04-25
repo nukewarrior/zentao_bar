@@ -5,11 +5,6 @@ options:
   deploymentTarget:
     macOS: "14.0"
 
-packages:
-  Sparkle:
-    url: https://github.com/sparkle-project/Sparkle
-    from: 2.6.4
-
 settings:
   base:
     PRODUCT_NAME: ZentaoBar
@@ -25,8 +20,8 @@ settings:
     LD_RUNPATH_SEARCH_PATHS:
       - "$(inherited)"
       - "@executable_path/../Frameworks"
-    SPARKLE_FEED_URL: https://nukewarrior.github.io/zentao_bar/appcast.xml
-    SPARKLE_PUBLIC_ED_KEY: SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER
+    ZENTAO_RELEASES_METADATA_URL: https://nukewarrior.github.io/zentao_bar/releases.json
+    ZENTAO_RELEASES_PAGE_BASE_URL: https://github.com/nukewarrior/zentao_bar
 
 targets:
   ZentaoBar:
@@ -36,10 +31,6 @@ targets:
     sources:
       - path: Sources/ZentaoBar
       - path: Xcode/Assets.xcassets
-    dependencies:
-      - package: Sparkle
-        product: Sparkle
-        embed: false
     settings:
       base:
         GENERATE_INFOPLIST_FILE: NO

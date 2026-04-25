@@ -31,13 +31,13 @@
   </dict>
   <key>NSHighResolutionCapable</key>
   <true/>
-  <key>SUFeedURL</key>
-  <string>$(SPARKLE_FEED_URL)</string>
-  <key>SUPublicEDKey</key>
-  <string>$(SPARKLE_PUBLIC_ED_KEY)</string>
   <key>ZentaoBuildConfiguration</key>
   <string>$(CONFIGURATION)</string>
   <key>ZentaoExecutableName</key>
   <string>$(EXECUTABLE_NAME)</string>
+  <key>ZentaoReleasePageBaseURL</key>
+  <string>$(ZENTAO_RELEASES_PAGE_BASE_URL)</string>
+  <key>ZentaoReleasesMetadataURL</key>
+  <string>$(ZENTAO_RELEASES_METADATA_URL)</string>
 </dict>
 </plist>

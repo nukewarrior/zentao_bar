@@ -227,6 +227,75 @@ struct ZentaoAPIClient: @unchecked Sendable {
         )
     }
 
+    func fetchMyInvolvedTasks(baseURL: String, token: String) async throws -> [ZentaoTask] {
+        DebugLogger.log("Fetching my involved tasks from /my-contribute-task-myInvolved")
+        let pageSize = 100
+        let maxPages = 5
+        var allTasks: [Int: ZentaoTask] = [:]
+
+        for page in 1 ... maxPages {
+            let path = "/my-contribute-task-myInvolved-\(page)-\(pageSize)-id_desc.json"
+            do {
+                let data = try await request(
+                    baseURL: baseURL,
+                    path: path,
+                    token: token
+                )
+
+                guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let dataString = root["data"] as? String,
+                      let dataData = dataString.data(using: .utf8),
+                      let dataObject = try JSONSerialization.jsonObject(with: dataData) as? [String: Any] else {
+                    DebugLogger.log("myInvolved page \(page): unexpected response format")
+                    break
+                }
+
+                if let tasksDict = dataObject["tasks"] as? [String: [String: Any]] {
+                    for (idStr, taskDict) in tasksDict {
+                        guard let id = Int(idStr) else { continue }
+                        let name = taskDict["name"] as? String ?? ""
+                        let assignedTo = taskDict["assignedTo"] as? String
+                        let execution: Int?
+                        if let execObj = taskDict["execution"] as? [String: Any] {
+                            execution = execObj["id"] as? Int
+                        } else {
+                            execution = taskDict["execution"] as? Int
+                        }
+                        allTasks[id] = ZentaoTask(
+                            id: id,
+                            name: name,
+                            assignedTo: assignedTo,
+                            execution: execution
+                        )
+                    }
+                }
+
+                if let pager = dataObject["pager"] as? [String: Any] {
+                    let total = pager["total"] as? Int ?? 0
+                    let recTotal = pager["recTotal"] as? Int ?? 0
+                    let pageTotal = max(total, recTotal)
+                    let loadedCount = page * pageSize
+                    DebugLogger.log("myInvolved page \(page): loaded \(allTasks.count) unique tasks, total=\(pageTotal)")
+                    if loadedCount >= pageTotal {
+                        break
+                    }
+                } else {
+                    break
+                }
+            } catch {
+                DebugLogger.log("myInvolved page \(page) failed: \(error.localizedDescription)")
+                if allTasks.isEmpty {
+                    throw error
+                }
+                break
+            }
+        }
+
+        let result = allTasks.values.sorted { $0.id < $1.id }
+        DebugLogger.log("myInvolved total: \(result.count) unique tasks")
+        return result
+    }
+
     func fetchEstimates(baseURL: String, token: String, taskID: Int) async throws -> [ZentaoEstimate] {
         let data = try await request(
             baseURL: baseURL,

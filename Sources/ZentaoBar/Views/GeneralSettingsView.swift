@@ -4,7 +4,7 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var preferences: PreferencesStore
-    @EnvironmentObject private var sparkleUpdater: SparkleUpdater
+    @EnvironmentObject private var updateReminder: UpdateReminderService
 
     var body: some View {
         ScrollView {
@@ -28,34 +28,42 @@ struct GeneralSettingsView: View {
 
                     section("更新") {
                         Toggle(
-                            "自动检查更新",
+                            "自动检查新版本",
                             isOn: Binding(
-                                get: { sparkleUpdater.automaticallyChecksForUpdates },
-                                set: { sparkleUpdater.setAutomaticallyChecksForUpdates($0) }
+                                get: { preferences.updateChecksEnabled },
+                                set: { preferences.setUpdateChecksEnabled($0) }
                             )
                         )
 
                         updateIntervalPickerRow
-                            .disabled(!sparkleUpdater.automaticallyChecksForUpdates)
-                            .opacity(sparkleUpdater.automaticallyChecksForUpdates ? 1 : 0.5)
+                            .disabled(!preferences.updateChecksEnabled)
+                            .opacity(preferences.updateChecksEnabled ? 1 : 0.5)
 
-                        settingRow("更新源", value: sparkleUpdater.updateFeedDescription)
+                        settingRow("版本源", value: updateReminder.releasesMetadataURLDescription)
                         settingRow("当前版本", value: AppMetadata.current.version)
-                        settingRow("最新版本", value: sparkleUpdater.latestVersionDescription)
-                        settingRow("上次检查", value: sparkleUpdater.lastCheckedText)
+                        settingRow("最新版本", value: updateReminder.latestVersionDescription)
+                        settingRow("发布时间", value: updateReminder.latestPublishedText)
+                        settingRow("上次检查", value: updateReminder.lastCheckedText)
+                        settingRow("发布页", value: updateReminder.latestReleasePageDescription)
 
-                        if let statusMessage = sparkleUpdater.statusMessage {
+                        if let statusMessage = updateReminder.statusMessage {
                             detailText(statusMessage)
                         }
 
                         HStack(spacing: 10) {
-                            Button("立即检查更新") {
-                                sparkleUpdater.checkForUpdates(userInitiated: true)
+                            Button("立即检查新版本") {
+                                updateReminder.checkForUpdates(userInitiated: true)
                             }
                             .buttonStyle(.borderedProminent)
-                            .disabled(sparkleUpdater.isCheckingForUpdates || !sparkleUpdater.canCheckForUpdates)
+                            .disabled(updateReminder.isCheckingForUpdates)
 
-                            if sparkleUpdater.isCheckingForUpdates {
+                            Button("前往下载最新版") {
+                                updateReminder.openLatestReleasePage()
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(!updateReminder.canOpenLatestReleasePage)
+
+                            if updateReminder.isCheckingForUpdates {
                                 ProgressView()
                                     .controlSize(.small)
                             }
@@ -169,8 +177,8 @@ struct GeneralSettingsView: View {
                 .frame(width: 88, alignment: .leading)
 
             Picker("检查间隔", selection: Binding(
-                get: { sparkleUpdater.updateCheckIntervalOption },
-                set: { sparkleUpdater.setUpdateCheckInterval($0) }
+                get: { preferences.updateCheckInterval },
+                set: { preferences.setUpdateCheckInterval($0) }
             )) {
                 ForEach(UpdateCheckIntervalOption.allCases) { option in
                     Text(option.title).tag(option)

@@ -2,7 +2,6 @@ name: Build macOS App
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  DEFAULT_FEED_URL: https://nukewarrior.github.io/zentao_bar/appcast.xml
 
 on:
   push:
@@ -127,8 +126,6 @@ jobs:
           uname -m
 
       - name: Build app bundle
-        env:
-          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -147,40 +144,18 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             MARKETING_VERSION="${{ steps.meta.outputs.version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.meta.outputs.build_number }}" \
-            SPARKLE_FEED_URL="${DEFAULT_FEED_URL}" \
-            SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER}" \
             build 2>&1 | tee "${LOG_PATH}"
 
           SOURCE_APP="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/ZentaoBar.app"
-          SOURCE_FRAMEWORK="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/Sparkle.framework"
           TARGET_APP="ci-output/bundles/${{ steps.meta.outputs.app_basename }}.app"
           ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.app_basename }}.app.zip"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
-          FRAMEWORK_PATH="${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
 
           if [[ ! -f "${SOURCE_APP}/Contents/Resources/Assets.car" ]]; then
             echo "error: expected compiled asset catalog at ${SOURCE_APP}/Contents/Resources/Assets.car" >&2
             exit 1
           fi
 
-          if [[ ! -d "${SOURCE_FRAMEWORK}" ]]; then
-            echo "error: expected built Sparkle framework at ${SOURCE_FRAMEWORK}" >&2
-            exit 1
-          fi
-
-          mkdir -p "${SOURCE_APP}/Contents/Frameworks"
-          rm -rf "${FRAMEWORK_PATH}"
-          ditto "${SOURCE_FRAMEWORK}" "${FRAMEWORK_PATH}"
-
-          if [[ ! -e "${FRAMEWORK_PATH}/Autoupdate" || ! -e "${FRAMEWORK_PATH}/Updater.app" ]]; then
-            echo "error: embedded Sparkle framework is missing updater helper tools" >&2
-            exit 1
-          fi
-
-          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}/Autoupdate"
-          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}/Updater.app"
-          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}"
-          codesign --force --sign - --timestamp=none "${SOURCE_APP}"
           codesign --verify --deep --strict --verbose=2 "${SOURCE_APP}"
 
           rm -rf "${TARGET_APP}"
@@ -271,8 +246,6 @@ jobs:
           uname -m
 
       - name: Build universal app bundle
-        env:
-          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         shell: bash
         run: |
           set -euo pipefail
@@ -291,40 +264,18 @@ jobs:
             ONLY_ACTIVE_ARCH=NO \
             MARKETING_VERSION="${{ steps.meta.outputs.version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.meta.outputs.build_number }}" \
-            SPARKLE_FEED_URL="${DEFAULT_FEED_URL}" \
-            SPARKLE_PUBLIC_ED_KEY="${SPARKLE_PUBLIC_ED_KEY:-SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER}" \
             build 2>&1 | tee "${LOG_PATH}"
 
           SOURCE_APP="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/ZentaoBar.app"
-          SOURCE_FRAMEWORK="DerivedData/Build/Products/${{ steps.meta.outputs.configuration == 'release' && 'Release' || 'Debug' }}/Sparkle.framework"
           TARGET_APP="ci-output/bundles/${{ steps.meta.outputs.app_basename }}.app"
           ZIP_PATH="ci-output/dist/${{ steps.meta.outputs.app_basename }}.app.zip"
           INFO_PATH="ci-output/logs/${{ steps.meta.outputs.base_name }}-build-info.txt"
-          FRAMEWORK_PATH="${SOURCE_APP}/Contents/Frameworks/Sparkle.framework"
 
           if [[ ! -f "${SOURCE_APP}/Contents/Resources/Assets.car" ]]; then
             echo "error: expected compiled asset catalog at ${SOURCE_APP}/Contents/Resources/Assets.car" >&2
             exit 1
           fi
 
-          if [[ ! -d "${SOURCE_FRAMEWORK}" ]]; then
-            echo "error: expected built Sparkle framework at ${SOURCE_FRAMEWORK}" >&2
-            exit 1
-          fi
-
-          mkdir -p "${SOURCE_APP}/Contents/Frameworks"
-          rm -rf "${FRAMEWORK_PATH}"
-          ditto "${SOURCE_FRAMEWORK}" "${FRAMEWORK_PATH}"
-
-          if [[ ! -e "${FRAMEWORK_PATH}/Autoupdate" || ! -e "${FRAMEWORK_PATH}/Updater.app" ]]; then
-            echo "error: embedded Sparkle framework is missing updater helper tools" >&2
-            exit 1
-          fi
-
-          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}/Autoupdate"
-          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}/Updater.app"
-          codesign --force --sign - --timestamp=none "${FRAMEWORK_PATH}"
-          codesign --force --sign - --timestamp=none "${SOURCE_APP}"
           codesign --verify --deep --strict --verbose=2 "${SOURCE_APP}"
 
           rm -rf "${TARGET_APP}"
