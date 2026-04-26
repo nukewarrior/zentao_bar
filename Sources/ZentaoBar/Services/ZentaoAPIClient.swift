@@ -1,6 +1,6 @@
 import Foundation
 
-struct ZentaoAPIClient: @unchecked Sendable {
+struct ZentaoAPIClient: Sendable {
     private let session: URLSession
 
     init(session: URLSession = .shared) {
