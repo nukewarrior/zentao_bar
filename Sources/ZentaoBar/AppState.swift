@@ -396,13 +396,11 @@ final class AppState: ObservableObject {
             )
             DebugLogger.log("Loaded assigned tasks from /tasks?assignedTo=me; count=\(assignedTasks.count)")
         } catch let error as ZentaoAPIError {
-            guard case let .requestFailed(statusCode, message) = error,
-                  statusCode == 403,
-                  (message?.localizedCaseInsensitiveContains("Access not allowed") ?? false) else {
+            guard shouldFallbackFromAssignedTasksEndpoint(error) else {
                 throw error
             }
 
-            DebugLogger.log("Falling back to legacy my-work task entry due to restricted /tasks endpoint")
+            DebugLogger.log("Falling back to legacy my-work task entry due to restricted /tasks endpoint: \(friendlyErrorMessage(error))")
 
             do {
                 assignedTasks = try await apiClient.fetchLegacyAssignedTasks(
@@ -537,7 +535,7 @@ final class AppState: ObservableObject {
             }
 
             for try await tasks in group {
-                for task in tasks where task.assignedTo == account {
+                for task in tasks where task.assignedTo == account || task.assignedTo == nil {
                     uniqueTasks[task.id] = task
                 }
             }
@@ -557,6 +555,32 @@ final class AppState: ObservableObject {
         }
 
         return error.localizedDescription
+    }
+
+    private func shouldFallbackFromAssignedTasksEndpoint(_ error: ZentaoAPIError) -> Bool {
+        guard case let .requestFailed(statusCode, message) = error else {
+            return false
+        }
+
+        switch statusCode {
+        case 403, 404, 405:
+            return true
+        default:
+            break
+        }
+
+        guard let message else { return false }
+
+        let fallbackHints = [
+            "access not allowed",
+            "permission denied",
+            "not allowed",
+            "forbidden",
+            "无权限",
+            "没有权限"
+        ]
+
+        return fallbackHints.contains { message.localizedCaseInsensitiveContains($0) }
     }
 
     private static func todayString() -> String {

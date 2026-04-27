@@ -230,10 +230,10 @@ struct ZentaoAPIClient: Sendable {
     func fetchMyInvolvedTasks(baseURL: String, token: String) async throws -> [ZentaoTask] {
         DebugLogger.log("Fetching my involved tasks from /my-contribute-task-myInvolved")
         let pageSize = 100
-        let maxPages = 5
         var allTasks: [Int: ZentaoTask] = [:]
 
-        for page in 1 ... maxPages {
+        var page = 1
+        while true {
             let path = "/my-contribute-task-myInvolved-\(page)-\(pageSize)-id_desc.json"
             do {
                 let data = try await request(
@@ -289,6 +289,8 @@ struct ZentaoAPIClient: Sendable {
                 }
                 break
             }
+
+            page += 1
         }
 
         let result = allTasks.values.sorted { $0.id < $1.id }
