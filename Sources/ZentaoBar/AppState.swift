@@ -207,12 +207,14 @@ final class AppState: ObservableObject {
             let allTasks = mergeTasks(current: currentTasks, involved: involvedTasks)
 
             taskWorks = allTasks.map { task in
-                TaskWork(
+                let work = TaskWork(
                     id: task.id,
                     name: task.name,
                     url: "\(config.baseURL)/task-view-\(task.id).html",
                     totalConsumed: task.consumed ?? 0
                 )
+                DebugLogger.log("Task work: id=\(task.id), name=\(task.name), consumed=\(task.consumed ?? 0)h, url=\(work.url)")
+                return work
             }
 
             totalConsumed = taskWorks.reduce(0) { $0 + $1.totalConsumed }

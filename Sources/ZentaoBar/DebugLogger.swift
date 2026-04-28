@@ -17,9 +17,10 @@ actor DebugLogWriter {
         do {
             try prepareIfNeeded()
 
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let line = "[\(formatter.string(from: Date()))] \(message)\n"
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss,SSS"
+            let timestamp = formatter.string(from: Date())
+            let line = "[\(timestamp)] \(message)\n"
             let data = Data(line.utf8)
 
             if let handle = try? FileHandle(forWritingTo: fileURL) {
