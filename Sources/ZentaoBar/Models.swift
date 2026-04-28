@@ -245,9 +245,10 @@ struct ZentaoTaskDetailData: Codable, Sendable {
     let execution: ZentaoExecution?
     let members: [String: String]?
     let users: [String: String]?
+    let actions: [String: ZentaoTaskAction]?
 
     enum CodingKeys: String, CodingKey {
-        case title, task, execution, members, users
+        case title, task, execution, members, users, actions
     }
 
     init(from decoder: Decoder) throws {
@@ -257,6 +258,7 @@ struct ZentaoTaskDetailData: Codable, Sendable {
         execution = try container.decodeIfPresent(ZentaoExecution.self, forKey: .execution)
         members = try container.decodeIfPresent([String: String].self, forKey: .members)
         users = try container.decodeIfPresent([String: String].self, forKey: .users)
+        actions = try container.decodeIfPresent([String: ZentaoTaskAction].self, forKey: .actions)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -266,6 +268,45 @@ struct ZentaoTaskDetailData: Codable, Sendable {
         try container.encodeIfPresent(execution, forKey: .execution)
         try container.encodeIfPresent(members, forKey: .members)
         try container.encodeIfPresent(users, forKey: .users)
+        try container.encodeIfPresent(actions, forKey: .actions)
+    }
+
+    func todayConsumed() -> Double {
+        guard let actions else { return 0 }
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
+        var total: Double = 0
+        for (_, action) in actions where action.action == "recordworkhour" {
+            if let actionDate = parseDate(action.date), calendar.isDate(actionDate, inSameDayAs: today) {
+                if let hours = Double(action.extra ?? "") {
+                    total += hours
+                }
+            }
+        }
+        return total
+    }
+
+    private func parseDate(_ dateString: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.date(from: dateString)
+    }
+}
+
+struct ZentaoTaskAction: Codable, Sendable {
+    let id: Int
+    let objectType: String?
+    let objectID: Int
+    let actor: String?
+    let action: String
+    let date: String
+    let comment: String?
+    let extra: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, objectType, objectID, actor, action, date, comment, extra
     }
 }
 

@@ -206,14 +206,38 @@ final class AppState: ObservableObject {
 
             let allTasks = mergeTasks(current: currentTasks, involved: involvedTasks)
 
+            let taskDetails = await withTaskGroup(of: (Int, Double).self) { group in
+                for task in allTasks {
+                    group.addTask {
+                        do {
+                            let detail = try await self.apiClient.fetchTaskDetail(
+                                baseURL: config.baseURL,
+                                token: token,
+                                taskID: task.id
+                            )
+                            return (task.id, detail.todayConsumed())
+                        } catch {
+                            return (task.id, 0)
+                        }
+                    }
+                }
+
+                var results: [Int: Double] = [:]
+                for await (taskID, todayConsumed) in group {
+                    results[taskID] = todayConsumed
+                }
+                return results
+            }
+
             taskWorks = allTasks.map { task in
+                let todayConsumed = taskDetails[task.id] ?? 0
                 let work = TaskWork(
                     id: task.id,
                     name: task.name,
                     url: "\(config.baseURL)/task-view-\(task.id).html",
-                    totalConsumed: task.consumed ?? 0
+                    totalConsumed: todayConsumed
                 )
-                DebugLogger.log("Task work: id=\(task.id), name=\(task.name), consumed=\(task.consumed ?? 0)h, url=\(work.url)")
+                DebugLogger.log("Task work: id=\(task.id), name=\(task.name), todayConsumed=\(todayConsumed)h, url=\(work.url)")
                 return work
             }
 
