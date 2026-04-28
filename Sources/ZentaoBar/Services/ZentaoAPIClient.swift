@@ -120,6 +120,22 @@ struct ZentaoAPIClient: Sendable {
         return detailData
     }
 
+    func fetchTodayDynamic(baseURL: String, token: String, userID: Int) async throws -> ZentaoDynamicData {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/company-dynamic-today--0--next-\(userID)-0-0-0-date_desc.json",
+            token: token
+        )
+
+        guard let response = try? JSONDecoder().decode(ZentaoDynamicResponse.self, from: data),
+              let innerData = response.data.data(using: .utf8),
+              let dynamicData = try? JSONDecoder().decode(ZentaoDynamicData.self, from: innerData) else {
+            throw ZentaoAPIError.invalidResponse
+        }
+
+        return dynamicData
+    }
+
     private func request(
         baseURL: String,
         path: String,

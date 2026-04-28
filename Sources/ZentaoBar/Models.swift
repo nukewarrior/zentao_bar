@@ -5,6 +5,7 @@ import Foundation
 struct AppConfig: Codable, Equatable, Sendable {
     let baseURL: String
     let account: String
+    let userID: Int?
 }
 
 // MARK: - Task Work (用于 UI 展示)
@@ -334,5 +335,73 @@ struct ZentaoExecution: Codable, Sendable {
         status = try container.decodeIfPresent(String.self, forKey: .status)
         begin = try container.decodeIfPresent(String.self, forKey: .begin)
         end = try container.decodeIfPresent(String.self, forKey: .end)
+    }
+}
+
+// MARK: - 今日动态
+
+struct ZentaoDynamicResponse: Codable, Sendable {
+    let status: String
+    let data: String
+    let md5: String?
+}
+
+struct ZentaoDynamicData: Codable, Sendable {
+    let title: String?
+    let recTotal: Int
+    let dateGroups: [String: [ZentaoDynamicAction]]
+
+    enum CodingKeys: String, CodingKey {
+        case title, recTotal, dateGroups
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        recTotal = try container.decodeIfPresent(Int.self, forKey: .recTotal) ?? 0
+
+        if let groups = try? container.decode([String: [ZentaoDynamicAction]].self, forKey: .dateGroups) {
+            dateGroups = groups
+        } else if let groups = try? container.decode([String: ZentaoDynamicAction].self, forKey: .dateGroups) {
+            dateGroups = groups.mapValues { [$0] }
+        } else {
+            dateGroups = [:]
+        }
+    }
+
+    var taskIDsWithActionToday: [Int] {
+        var ids = Set<Int>()
+        for (_, actions) in dateGroups {
+            for action in actions where action.objectType == "task" {
+                ids.insert(action.objectID)
+            }
+        }
+        return Array(ids).sorted()
+    }
+}
+
+struct ZentaoDynamicAction: Codable, Sendable {
+    let id: Int
+    let objectType: String
+    let objectID: Int
+    let product: String?
+    let project: Int?
+    let execution: Int?
+    let actor: String?
+    let action: String
+    let date: String
+    let comment: String?
+    let extra: String?
+    let originalDate: String?
+    let actionLabel: String?
+    let objectLabel: String?
+    let major: Int?
+    let objectName: String?
+    let objectLink: String?
+    let time: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, objectType, objectID, product, project, execution, actor, action, date
+        case comment, extra, originalDate, actionLabel, objectLabel, major, objectName, objectLink, time
     }
 }

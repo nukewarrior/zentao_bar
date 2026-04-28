@@ -150,7 +150,7 @@ final class AppState: ObservableObject {
                 tokenStore.deletePassword(baseURL: oldConfig.baseURL, account: oldConfig.account)
             }
 
-            let newConfig = AppConfig(baseURL: baseURL, account: account)
+            let newConfig = AppConfig(baseURL: baseURL, account: account, userID: user.id)
             try configStore.save(newConfig)
             try tokenStore.saveToken(token, baseURL: baseURL, account: account)
             try tokenStore.savePassword(password, baseURL: baseURL, account: account)
@@ -206,18 +206,28 @@ final class AppState: ObservableObject {
 
             let allTasks = mergeTasks(current: currentTasks, involved: involvedTasks)
 
+            var taskIDsWithActionToday: [Int] = []
+            if let userID = config.userID {
+                let dynamicData = try await apiClient.fetchTodayDynamic(
+                    baseURL: config.baseURL,
+                    token: token,
+                    userID: userID
+                )
+                taskIDsWithActionToday = dynamicData.taskIDsWithActionToday
+            }
+
             let taskDetails = await withTaskGroup(of: (Int, Double).self) { group in
-                for task in allTasks {
+                for taskID in taskIDsWithActionToday {
                     group.addTask {
                         do {
                             let detail = try await self.apiClient.fetchTaskDetail(
                                 baseURL: config.baseURL,
                                 token: token,
-                                taskID: task.id
+                                taskID: taskID
                             )
-                            return (task.id, detail.todayConsumed())
+                            return (taskID, detail.todayConsumed())
                         } catch {
-                            return (task.id, 0)
+                            return (taskID, 0)
                         }
                     }
                 }
