@@ -156,11 +156,13 @@ final class AppState: ObservableObject {
             if let oldConfig,
                oldConfig.baseURL != baseURL || oldConfig.account != account {
                 tokenStore.deleteToken(baseURL: oldConfig.baseURL, account: oldConfig.account)
+                tokenStore.deletePassword(baseURL: oldConfig.baseURL, account: oldConfig.account)
             }
 
             let newConfig = AppConfig(baseURL: baseURL, account: account)
             try configStore.save(newConfig)
             try tokenStore.saveToken(token, baseURL: baseURL, account: account)
+            try tokenStore.savePassword(password, baseURL: baseURL, account: account)
             DebugLogger.log("Login succeeded for account=\(account)")
             reconfigureAutoRefresh()
             await refresh(force: true)
@@ -272,9 +274,16 @@ final class AppState: ObservableObject {
         } catch {
             if let apiError = error as? ZentaoAPIError,
                case .unauthorized = apiError {
-                tokenStore.deleteToken(baseURL: config.baseURL, account: config.account)
-                loadState = .authRequired
-                reconfigureAutoRefresh()
+                DebugLogger.log("Token expired, attempting automatic re-login")
+                if await attemptReLogin() {
+                    DebugLogger.log("Automatic re-login succeeded, retrying refresh")
+                    await refresh(force: true)
+                    return
+                } else {
+                    tokenStore.deleteToken(baseURL: config.baseURL, account: config.account)
+                    loadState = .authRequired
+                    reconfigureAutoRefresh()
+                }
             } else if hadData {
                 loadState = .loaded
             } else {
@@ -286,6 +295,17 @@ final class AppState: ObservableObject {
         }
     }
 
+    private func attemptReLogin() async -> Bool {
+        guard let config else { return false }
+        guard let password = tokenStore.loadPassword(baseURL: config.baseURL, account: config.account) else {
+            DebugLogger.log("Re-login failed: no password stored")
+            return false
+        }
+
+        DebugLogger.log("Attempting re-login with stored credentials")
+        return await login(baseURL: config.baseURL, account: config.account, password: password)
+    }
+
     func logout() {
         guard let config else {
             loadState = .authRequired
@@ -293,6 +313,7 @@ final class AppState: ObservableObject {
         }
 
         tokenStore.deleteToken(baseURL: config.baseURL, account: config.account)
+        tokenStore.deletePassword(baseURL: config.baseURL, account: config.account)
         taskWorks = []
         totalConsumed = 0
         errorMessage = nil
