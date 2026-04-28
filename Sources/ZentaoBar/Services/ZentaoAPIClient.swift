@@ -29,9 +29,8 @@ struct ZentaoAPIClient: Sendable {
         return components.url?.absoluteString
     }
 
-    // MARK: - 1. 获取 Token
-
     func fetchToken(baseURL: String, account: String, password: String) async throws -> String {
+        DebugLogger.log("Requesting token for account=\(account), baseURL=\(baseURL)")
         let payload = try JSONSerialization.data(
             withJSONObject: [
                 "account": account,
@@ -47,13 +46,13 @@ struct ZentaoAPIClient: Sendable {
         )
 
         if let response = try? JSONDecoder().decode(ZentaoTokenResponse.self, from: data) {
+            DebugLogger.log("Token obtained successfully")
             return response.token
         }
 
+        DebugLogger.log("Failed to parse token response")
         throw ZentaoAPIError.invalidResponse
     }
-
-    // MARK: - 2. 获取当前用户信息
 
     func fetchCurrentUser(baseURL: String, token: String) async throws -> ZentaoUser {
         let data = try await request(
@@ -79,31 +78,31 @@ struct ZentaoAPIClient: Sendable {
         throw ZentaoAPIError.invalidResponse
     }
 
-    // MARK: - 3. 获取当前分配的任务
-
     func fetchAssignedTasks(baseURL: String, token: String) async throws -> [ZentaoTaskItem] {
+        DebugLogger.log("Fetching assigned tasks from /my-work-task-assignedTo.json")
         let data = try await request(
             baseURL: baseURL,
             path: "/my-work-task-assignedTo.json",
             token: token
         )
 
-        return try parseTaskListResponse(data)
+        let tasks = try parseTaskListResponse(data)
+        DebugLogger.log("Loaded assigned tasks: count=\(tasks.count)")
+        return tasks
     }
 
-    // MARK: - 4. 获取我参与的任务（历史）
-
     func fetchMyInvolvedTasks(baseURL: String, token: String) async throws -> [ZentaoTaskItem] {
+        DebugLogger.log("Fetching involved tasks from /my-contribute-task-myInvolved")
         let data = try await request(
             baseURL: baseURL,
             path: "/my-contribute-task-myInvolved--id_desc.json",
             token: token
         )
 
-        return try parseTaskListResponse(data)
+        let tasks = try parseTaskListResponse(data)
+        DebugLogger.log("Loaded involved tasks: count=\(tasks.count)")
+        return tasks
     }
-
-    // MARK: - 5. 获取任务详情
 
     func fetchTaskDetail(baseURL: String, token: String, taskID: Int) async throws -> ZentaoTaskDetailData {
         let data = try await request(
@@ -121,8 +120,6 @@ struct ZentaoAPIClient: Sendable {
         return detailData
     }
 
-    // MARK: - Private
-
     private func request(
         baseURL: String,
         path: String,
@@ -138,6 +135,7 @@ struct ZentaoAPIClient: Sendable {
         request.httpMethod = method
         request.httpBody = body
         request.timeoutInterval = 20
+        DebugLogger.log("HTTP \(method) \(url.absoluteString)")
 
         if body != nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -151,6 +149,8 @@ struct ZentaoAPIClient: Sendable {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ZentaoAPIError.invalidResponse
         }
+
+        DebugLogger.log("HTTP \(method) \(url.absoluteString) -> \(httpResponse.statusCode), bytes=\(data.count)")
 
         switch httpResponse.statusCode {
         case 200 ..< 300:
