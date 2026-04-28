@@ -34,9 +34,6 @@ final class AppState: ObservableObject {
         self.apiClient = apiClient
         self.preferences = preferences
         self.lastUpdatedAt = configStore.loadLastRefreshDate()
-        DebugLogger.log(
-            "AppState initialized; build=\(AppMetadata.current.buildConfiguration), logFile=\(DebugLogger.logFilePath)"
-        )
         observePreferences()
     }
 
@@ -60,7 +57,6 @@ final class AppState: ObservableObject {
         if preferences.autoRefreshEnabled {
             return "后台每 \(preferences.autoRefreshInterval.title) 自动刷新，间隔同时作为缓存有效期"
         }
-
         return "后台自动刷新已关闭，缓存有效期为 \(preferences.autoRefreshInterval.title)"
     }
 
@@ -69,7 +65,6 @@ final class AppState: ObservableObject {
         if total.truncatingRemainder(dividingBy: 1) == 0 {
             return "\(Int(total))"
         }
-
         return String(format: "%.1f", total)
     }
 
@@ -81,7 +76,6 @@ final class AppState: ObservableObject {
         guard let lastUpdatedAt else {
             return "尚未刷新"
         }
-
         let formatter = DateFormatter()
         formatter.timeStyle = .short
         formatter.dateStyle = .none
@@ -100,10 +94,8 @@ final class AppState: ObservableObject {
     func bootstrap() async {
         guard !didBootstrap else { return }
         didBootstrap = true
-        DebugLogger.log("Bootstrap started")
 
         guard config != nil, currentToken != nil else {
-            DebugLogger.log("Bootstrap requires authentication; missing config or token")
             loadState = .authRequired
             reconfigureAutoRefresh()
             return
@@ -135,7 +127,6 @@ final class AppState: ObservableObject {
 
         loadState = .loading
         errorMessage = nil
-        DebugLogger.log("Login attempt started for account=\(account), baseURL=\(baseURL)")
 
         do {
             let token = try await apiClient.fetchToken(
@@ -163,7 +154,6 @@ final class AppState: ObservableObject {
             try configStore.save(newConfig)
             try tokenStore.saveToken(token, baseURL: baseURL, account: account)
             try tokenStore.savePassword(password, baseURL: baseURL, account: account)
-            DebugLogger.log("Login succeeded for account=\(account)")
             reconfigureAutoRefresh()
             await refresh(force: true)
             return true
@@ -171,21 +161,18 @@ final class AppState: ObservableObject {
             loadState = .authRequired
             errorMessage = friendlyErrorMessage(error)
             reconfigureAutoRefresh()
-            DebugLogger.log("Login failed for account=\(account): \(friendlyErrorMessage(error))")
             return false
         }
     }
 
     func refresh(force: Bool = true) async {
         guard let config, let token = currentToken else {
-            DebugLogger.log("Refresh skipped; missing config or token")
             loadState = .authRequired
             reconfigureAutoRefresh()
             return
         }
 
         if isRefreshingInFlight {
-            DebugLogger.log("Refresh skipped because another refresh is already running")
             return
         }
 
@@ -193,7 +180,6 @@ final class AppState: ObservableObject {
            let lastUpdatedAt,
            Date().timeIntervalSince(lastUpdatedAt) < preferences.autoRefreshInterval.seconds,
            !taskWorks.isEmpty {
-            DebugLogger.log("Refresh skipped due to cache; taskCount=\(taskWorks.count)")
             loadState = .loaded
             return
         }
@@ -202,81 +188,41 @@ final class AppState: ObservableObject {
         isRefreshingInFlight = true
         loadState = .loading
         errorMessage = nil
-        DebugLogger.log("Refresh started; force=\(force), hadData=\(hadData), baseURL=\(config.baseURL)")
 
         defer {
             isRefreshingInFlight = false
         }
 
         do {
-            let user = try await apiClient.fetchCurrentUser(
+            let currentTasks = try await apiClient.fetchAssignedTasks(
                 baseURL: config.baseURL,
                 token: token
             )
-            let tasks = try await fetchTasksForCurrentUser(
+
+            let involvedTasks = (try? await apiClient.fetchMyInvolvedTasks(
                 baseURL: config.baseURL,
-                token: token,
-                account: user.account
-            )
+                token: token
+            )) ?? []
 
-            let today = Self.todayString()
-            let apiClient = self.apiClient
-            let baseURL = config.baseURL
-            var aggregates: [Int: TaskWork] = Dictionary(
-                uniqueKeysWithValues: tasks.map { task in
-                    (
-                        task.id,
-                        TaskWork(
-                            id: task.id,
-                            name: task.name,
-                            url: "\(baseURL)/task-view-\(task.id).html",
-                            totalConsumed: 0
-                        )
-                    )
-                }
-            )
+            let allTasks = mergeTasks(current: currentTasks, involved: involvedTasks)
 
-            try await withThrowingTaskGroup(of: (ZentaoTask, [ZentaoEstimate]).self) { group in
-                for task in tasks {
-                    group.addTask {
-                        let estimates = try await apiClient.fetchEstimates(
-                            baseURL: baseURL,
-                            token: token,
-                            taskID: task.id
-                        )
-                        return (task, estimates)
-                    }
-                }
-
-                for try await (task, estimates) in group {
-                    for estimate in estimates where estimate.account == user.account && estimate.date == today {
-                        aggregates[task.id]?.totalConsumed += estimate.consumed
-                    }
-                }
+            taskWorks = allTasks.map { task in
+                TaskWork(
+                    id: task.id,
+                    name: task.name,
+                    url: "\(config.baseURL)/task-view-\(task.id).html",
+                    totalConsumed: task.consumed ?? 0
+                )
             }
 
-            let sorted = aggregates.values.sorted { left, right in
-                if left.totalConsumed == right.totalConsumed {
-                    return left.name.localizedCompare(right.name) == .orderedAscending
-                }
-
-                return left.totalConsumed > right.totalConsumed
-            }
-
-            taskWorks = sorted
-            totalConsumed = sorted.reduce(0) { $0 + $1.totalConsumed }
+            totalConsumed = taskWorks.reduce(0) { $0 + $1.totalConsumed }
             lastUpdatedAt = Date()
             configStore.saveLastRefreshDate(lastUpdatedAt)
-            loadState = tasks.isEmpty ? .empty : .loaded
-            DebugLogger.log(
-                "Refresh succeeded; user=\(user.account), taskCount=\(sorted.count), totalConsumed=\(totalConsumed)"
-            )
+            loadState = taskWorks.isEmpty ? .empty : .loaded
         } catch {
             if let apiError = error as? ZentaoAPIError,
                case .unauthorized = apiError {
-                DebugLogger.log("Token expired, attempting automatic re-login")
                 if await attemptReLogin() {
-                    DebugLogger.log("Automatic re-login succeeded, retrying refresh")
                     await refresh(force: true)
                     return
                 } else {
@@ -291,18 +237,15 @@ final class AppState: ObservableObject {
             }
 
             errorMessage = friendlyErrorMessage(error)
-            DebugLogger.log("Refresh failed: \(friendlyErrorMessage(error))")
         }
     }
 
     private func attemptReLogin() async -> Bool {
         guard let config else { return false }
         guard let password = tokenStore.loadPassword(baseURL: config.baseURL, account: config.account) else {
-            DebugLogger.log("Re-login failed: no password stored")
             return false
         }
 
-        DebugLogger.log("Attempting re-login with stored credentials")
         return await login(baseURL: config.baseURL, account: config.account, password: password)
     }
 
@@ -319,7 +262,6 @@ final class AppState: ObservableObject {
         errorMessage = nil
         loadState = .authRequired
         reconfigureAutoRefresh()
-        DebugLogger.log("Logout completed for account=\(config.account)")
     }
 
     func openTask(_ task: TaskWork) {
@@ -332,7 +274,6 @@ final class AppState: ObservableObject {
     }
 
     func quitApplication() {
-        DebugLogger.log("Application terminating by user request")
         NSApp.terminate(nil)
     }
 
@@ -365,17 +306,14 @@ final class AppState: ObservableObject {
         autoRefreshTask = nil
 
         guard preferences.autoRefreshEnabled else {
-            DebugLogger.log("Auto refresh disabled")
             return
         }
 
         guard config != nil, currentToken != nil else {
-            DebugLogger.log("Auto refresh not scheduled because authentication is missing")
             return
         }
 
         let interval = preferences.autoRefreshInterval.seconds
-        DebugLogger.log("Auto refresh scheduled every \(Int(interval)) seconds")
 
         autoRefreshTask = Task { [weak self] in
             guard let self else { return }
@@ -400,173 +338,23 @@ final class AppState: ObservableObject {
         guard preferences.autoRefreshEnabled else { return }
         guard config != nil, currentToken != nil else { return }
 
-        DebugLogger.log("Auto refresh tick fired")
         await refresh(force: true)
     }
 
-    private func fetchTasksForCurrentUser(
-        baseURL: String,
-        token: String,
-        account: String
-    ) async throws -> [ZentaoTask] {
-        let assignedTasks: [ZentaoTask]
-        do {
-            assignedTasks = try await apiClient.fetchAssignedTasks(
-                baseURL: baseURL,
-                token: token
-            )
-            DebugLogger.log("Loaded assigned tasks from /tasks?assignedTo=me; count=\(assignedTasks.count)")
-        } catch let error as ZentaoAPIError {
-            guard shouldFallbackFromAssignedTasksEndpoint(error) else {
-                throw error
-            }
+    private func mergeTasks(current: [ZentaoTaskItem], involved: [ZentaoTaskItem]) -> [ZentaoTaskItem] {
+        var merged: [Int: ZentaoTaskItem] = [:]
 
-            DebugLogger.log("Falling back to legacy my-work task entry due to restricted /tasks endpoint: \(friendlyErrorMessage(error))")
+        for task in current {
+            merged[task.id] = task
+        }
 
-            do {
-                assignedTasks = try await apiClient.fetchLegacyAssignedTasks(
-                    baseURL: baseURL,
-                    token: token
-                )
-            } catch {
-                DebugLogger.log("Legacy my-work fallback failed: \(friendlyErrorMessage(error))")
-
-                DebugLogger.log("Falling back to execution traversal due to restricted /tasks endpoint")
-
-                do {
-                    assignedTasks = try await fetchTasksViaExecutions(
-                        baseURL: baseURL,
-                        token: token,
-                        account: account
-                    )
-                } catch {
-                    DebugLogger.log("Execution traversal fallback failed: \(friendlyErrorMessage(error))")
-                    DebugLogger.log("Falling back to project/execution traversal as final recovery path")
-                    assignedTasks = try await fetchTasksViaProjectExecutions(
-                        baseURL: baseURL,
-                        token: token,
-                        account: account
-                    )
-                }
+        for task in involved {
+            if merged[task.id] == nil {
+                merged[task.id] = task
             }
         }
 
-        // 补充获取我参与过的任务（包括已关闭的），与 assignedTo=me 的任务合并去重
-        let involvedTasks = (try? await apiClient.fetchMyInvolvedTasks(
-            baseURL: baseURL,
-            token: token
-        )) ?? []
-        DebugLogger.log("Loaded involved tasks from /my-contribute-task-myInvolved; count=\(involvedTasks.count)")
-
-        // 合并去重：优先保留 assignedTo=me 的任务
-        var mergedTasks: [Int: ZentaoTask] = [:]
-        for task in assignedTasks {
-            mergedTasks[task.id] = task
-        }
-        for task in involvedTasks {
-            if mergedTasks[task.id] == nil {
-                mergedTasks[task.id] = task
-            }
-        }
-
-        let result = mergedTasks.values.sorted { $0.id < $1.id }
-        DebugLogger.log("Merged tasks: assigned=\(assignedTasks.count), involved=\(involvedTasks.count), total=\(result.count)")
-        return result
-    }
-
-    private func fetchTasksViaExecutions(
-        baseURL: String,
-        token: String,
-        account: String
-    ) async throws -> [ZentaoTask] {
-        let executions = try await apiClient.fetchExecutions(
-            baseURL: baseURL,
-            token: token
-        )
-        DebugLogger.log("Loaded executions for fallback; count=\(executions.count)")
-
-        let apiClient = self.apiClient
-        var uniqueTasks: [Int: ZentaoTask] = [:]
-
-        try await withThrowingTaskGroup(of: [ZentaoTask].self) { group in
-            for execution in executions {
-                group.addTask {
-                    try await apiClient.fetchExecutionTasks(
-                        baseURL: baseURL,
-                        token: token,
-                        executionID: execution.id,
-                        status: "assignedtome"
-                    )
-                }
-            }
-
-            for try await tasks in group {
-                for task in tasks where task.assignedTo == account || task.assignedTo == nil {
-                    uniqueTasks[task.id] = task
-                }
-            }
-        }
-
-        let result = uniqueTasks.values.sorted { left, right in
-            left.id < right.id
-        }
-        DebugLogger.log("Filtered execution fallback tasks assigned to \(account); count=\(result.count)")
-        return result
-    }
-
-    private func fetchTasksViaProjectExecutions(
-        baseURL: String,
-        token: String,
-        account: String
-    ) async throws -> [ZentaoTask] {
-        let projects = try await apiClient.fetchProjects(
-            baseURL: baseURL,
-            token: token
-        )
-        DebugLogger.log("Loaded projects for fallback; count=\(projects.count)")
-
-        var executionIDs = Set<Int>()
-
-        for project in projects {
-            let executions = try await apiClient.fetchProjectExecutions(
-                baseURL: baseURL,
-                token: token,
-                projectID: project.id
-            )
-
-            for execution in executions {
-                executionIDs.insert(execution.id)
-            }
-        }
-
-        DebugLogger.log("Loaded executions for fallback; uniqueCount=\(executionIDs.count)")
-
-        var uniqueTasks: [Int: ZentaoTask] = [:]
-        let apiClient = self.apiClient
-
-        try await withThrowingTaskGroup(of: [ZentaoTask].self) { group in
-            for executionID in executionIDs {
-                group.addTask {
-                    try await apiClient.fetchExecutionTasks(
-                        baseURL: baseURL,
-                        token: token,
-                        executionID: executionID
-                    )
-                }
-            }
-
-            for try await tasks in group {
-                for task in tasks where task.assignedTo == account || task.assignedTo == nil {
-                    uniqueTasks[task.id] = task
-                }
-            }
-        }
-
-        let result = uniqueTasks.values.sorted { left, right in
-            left.id < right.id
-        }
-        DebugLogger.log("Filtered fallback tasks assigned to \(account); count=\(result.count)")
-        return result
+        return merged.values.sorted { $0.id < $1.id }
     }
 
     private func friendlyErrorMessage(_ error: Error) -> String {
@@ -574,42 +362,6 @@ final class AppState: ObservableObject {
            let description = localized.errorDescription {
             return description
         }
-
         return error.localizedDescription
-    }
-
-    private func shouldFallbackFromAssignedTasksEndpoint(_ error: ZentaoAPIError) -> Bool {
-        guard case let .requestFailed(statusCode, message) = error else {
-            return false
-        }
-
-        switch statusCode {
-        case 403, 404, 405:
-            return true
-        default:
-            break
-        }
-
-        guard let message else { return false }
-
-        let fallbackHints = [
-            "access not allowed",
-            "permission denied",
-            "not allowed",
-            "forbidden",
-            "无权限",
-            "没有权限"
-        ]
-
-        return fallbackHints.contains { message.localizedCaseInsensitiveContains($0) }
-    }
-
-    private static func todayString() -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .current
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
     }
 }

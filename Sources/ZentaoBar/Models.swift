@@ -1,9 +1,13 @@
 import Foundation
 
+// MARK: - App Configuration
+
 struct AppConfig: Codable, Equatable, Sendable {
     let baseURL: String
     let account: String
 }
+
+// MARK: - Task Work (用于 UI 展示)
 
 struct TaskWork: Identifiable, Equatable, Sendable {
     let id: Int
@@ -20,6 +24,8 @@ struct TaskWork: Identifiable, Equatable, Sendable {
     }
 }
 
+// MARK: - Load State
+
 enum LoadState: Equatable, Sendable {
     case idle
     case loading
@@ -29,66 +35,7 @@ enum LoadState: Equatable, Sendable {
     case failed(String)
 }
 
-struct ZentaoTokenResponse: Decodable, Sendable {
-    let token: String
-}
-
-struct ZentaoCurrentUser: Decodable, Sendable {
-    let account: String
-}
-
-struct ZentaoTask: Decodable, Sendable {
-    let id: Int
-    let name: String
-    let assignedTo: String?
-    let execution: Int?
-}
-
-struct ZentaoProject: Decodable, Sendable {
-    let id: Int
-    let name: String
-}
-
-struct ZentaoExecution: Decodable, Sendable {
-    let id: Int
-    let name: String
-}
-
-struct ZentaoEstimate: Decodable, Sendable {
-    let account: String
-    let date: String
-    let consumed: Double
-    let work: String?
-
-    enum CodingKeys: String, CodingKey {
-        case account
-        case date
-        case consumed
-        case work
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        account = try container.decode(String.self, forKey: .account)
-        date = try container.decode(String.self, forKey: .date)
-        work = try container.decodeIfPresent(String.self, forKey: .work)
-
-        if let doubleValue = try? container.decode(Double.self, forKey: .consumed) {
-            consumed = doubleValue
-        } else if let intValue = try? container.decode(Int.self, forKey: .consumed) {
-            consumed = Double(intValue)
-        } else if let stringValue = try? container.decode(String.self, forKey: .consumed),
-                  let doubleValue = Double(stringValue) {
-            consumed = doubleValue
-        } else {
-            throw DecodingError.dataCorruptedError(
-                forKey: .consumed,
-                in: container,
-                debugDescription: "Unable to decode consumed as a number."
-            )
-        }
-    }
-}
+// MARK: - API Error
 
 enum ZentaoAPIError: LocalizedError, Sendable {
     case invalidBaseURL
@@ -109,10 +56,242 @@ enum ZentaoAPIError: LocalizedError, Sendable {
             if let message, !message.isEmpty {
                 return "请求失败（\(statusCode)）：\(message)"
             }
-
             return "请求失败（\(statusCode)）。"
         case let .message(message):
             return message
         }
+    }
+}
+
+// MARK: - User
+
+struct ZentaoUser: Codable, Sendable {
+    let id: Int
+    let account: String
+    let realname: String
+    let role: Role?
+    let dept: Int
+    let email: String?
+    let mobile: String?
+    let join: String?
+    let admin: Bool
+
+    struct Role: Codable, Sendable {
+        let code: String
+        let name: String
+    }
+}
+
+// MARK: - Token Response
+
+struct ZentaoTokenResponse: Codable, Sendable {
+    let token: String
+}
+
+// MARK: - User Response
+
+struct ZentaoUserResponse: Codable, Sendable {
+    let profile: ZentaoProfile
+
+    struct ZentaoProfile: Codable, Sendable {
+        let id: Int
+        let account: String
+        let realname: String
+        let role: ZentaoUser.Role?
+        let dept: Int
+        let email: String?
+        let mobile: String?
+        let join: String?
+        let admin: Bool
+    }
+}
+
+// MARK: - Task Item
+
+struct ZentaoTaskItem: Codable, Identifiable, Sendable {
+    let id: Int
+    let name: String
+    let project: Int
+    let execution: Int
+    let module: Int?
+    let story: Int?
+    let type: String?
+    let pri: Int?
+    let estimate: Double?
+    let consumed: Double?
+    let left: Double?
+    let deadline: String?
+    let status: String
+    let assignedTo: String?
+    let assignedToRealName: String?
+    let openedBy: String?
+    let openedDate: String?
+    let assignedDate: String?
+    let realStarted: String?
+    let finishedBy: String?
+    let finishedDate: String?
+    let closedBy: String?
+    let closedDate: String?
+    let closedReason: String?
+    let projectName: String?
+    let executionName: String?
+    let storyID: Int?
+    let storyTitle: String?
+    let progress: Double?
+    let estimateLabel: String?
+    let consumedLabel: String?
+    let leftLabel: String?
+    let desc: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, project, execution, module, story, type, pri
+        case estimate, consumed, left, deadline, status
+        case assignedTo = "assignedTo"
+        case assignedToRealName, openedBy, openedDate, assignedDate, realStarted
+        case finishedBy, finishedDate, closedBy, closedDate, closedReason
+        case projectName, executionName, storyID = "storyID", storyTitle
+        case progress, estimateLabel, consumedLabel, leftLabel, desc
+    }
+}
+
+// MARK: - Task List Response (外层)
+
+struct ZentaoTaskListResponse: Codable, Sendable {
+    let status: String
+    let data: String
+    let md5: String?
+}
+
+// MARK: - Task List Data (内层，二次解析)
+
+struct ZentaoTaskListData: Codable, Sendable {
+    let title: String?
+    let type: String?
+    let tasks: [ZentaoTaskItem]
+    let summary: String?
+    let pager: ZentaoPager?
+
+    enum CodingKeys: String, CodingKey {
+        case title, type, tasks, summary, pager
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        summary = try container.decodeIfPresent(String.self, forKey: .summary)
+        pager = try container.decodeIfPresent(ZentaoPager.self, forKey: .pager)
+
+        // tasks 可能是数组，也可能是字典
+        if let tasksArray = try? container.decode([ZentaoTaskItem].self, forKey: .tasks) {
+            tasks = tasksArray
+        } else if let tasksDict = try? container.decode([String: ZentaoTaskItem].self, forKey: .tasks) {
+            tasks = tasksDict.sorted { Int($0.key) ?? 0 < Int($1.key) ?? 0 }.map { $0.value }
+        } else {
+            tasks = []
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(type, forKey: .type)
+        try container.encode(tasks, forKey: .tasks)
+        try container.encodeIfPresent(summary, forKey: .summary)
+        try container.encodeIfPresent(pager, forKey: .pager)
+    }
+}
+
+// MARK: - Pager
+
+struct ZentaoPager: Codable, Sendable {
+    let recTotal: Int
+    let recPerPage: Int
+    let pageTotal: Int
+    let pageID: Int
+    let offset: Int
+
+    enum CodingKeys: String, CodingKey {
+        case recTotal
+        case recPerPage
+        case pageTotal
+        case pageID
+        case offset
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        recTotal = try container.decode(Int.self, forKey: .recTotal)
+        recPerPage = try container.decode(Int.self, forKey: .recPerPage)
+        pageTotal = try container.decode(Int.self, forKey: .pageTotal)
+        pageID = try container.decode(Int.self, forKey: .pageID)
+        offset = try container.decode(Int.self, forKey: .offset)
+    }
+}
+
+// MARK: - Task Detail Response
+
+struct ZentaoTaskDetailResponse: Codable, Sendable {
+    let status: String
+    let data: String
+    let md5: String?
+}
+
+// MARK: - Task Detail Data
+
+struct ZentaoTaskDetailData: Codable, Sendable {
+    let title: String?
+    let task: ZentaoTaskItem?
+    let execution: ZentaoExecution?
+    let members: [String: String]?
+    let users: [String: String]?
+
+    enum CodingKeys: String, CodingKey {
+        case title, task, execution, members, users
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(String.self, forKey: .title)
+        task = try container.decodeIfPresent(ZentaoTaskItem.self, forKey: .task)
+        execution = try container.decodeIfPresent(ZentaoExecution.self, forKey: .execution)
+        members = try container.decodeIfPresent([String: String].self, forKey: .members)
+        users = try container.decodeIfPresent([String: String].self, forKey: .users)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(title, forKey: .title)
+        try container.encodeIfPresent(task, forKey: .task)
+        try container.encodeIfPresent(execution, forKey: .execution)
+        try container.encodeIfPresent(members, forKey: .members)
+        try container.encodeIfPresent(users, forKey: .users)
+    }
+}
+
+// MARK: - Execution (用于任务详情)
+
+struct ZentaoExecution: Codable, Sendable {
+    let id: Int
+    let project: Int
+    let name: String
+    let type: String?
+    let status: String?
+    let begin: String?
+    let end: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, project, name, type, status, begin, end
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        project = try container.decode(Int.self, forKey: .project)
+        name = try container.decode(String.self, forKey: .name)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
+        begin = try container.decodeIfPresent(String.self, forKey: .begin)
+        end = try container.decodeIfPresent(String.self, forKey: .end)
     }
 }

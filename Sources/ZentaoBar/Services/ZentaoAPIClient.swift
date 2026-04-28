@@ -29,8 +29,9 @@ struct ZentaoAPIClient: Sendable {
         return components.url?.absoluteString
     }
 
+    // MARK: - 1. 获取 Token
+
     func fetchToken(baseURL: String, account: String, password: String) async throws -> String {
-        DebugLogger.log("Requesting token for account=\(account), baseURL=\(baseURL)")
         let payload = try JSONSerialization.data(
             withJSONObject: [
                 "account": account,
@@ -49,268 +50,78 @@ struct ZentaoAPIClient: Sendable {
             return response.token
         }
 
-        if let wrapped: ZentaoTokenResponse = try? decodeWrappedObject(
-            ZentaoTokenResponse.self,
-            from: data,
-            rootKeys: ["data"]
-        ) {
-            return wrapped.token
-        }
-
-        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let token = object["token"] as? String {
-            return token
-        }
-
-        DebugLogger.logResponsePreview(path: "/api.php/v1/tokens", data: data)
         throw ZentaoAPIError.invalidResponse
     }
 
-    func fetchCurrentUser(baseURL: String, token: String) async throws -> ZentaoCurrentUser {
+    // MARK: - 2. 获取当前用户信息
+
+    func fetchCurrentUser(baseURL: String, token: String) async throws -> ZentaoUser {
         let data = try await request(
             baseURL: baseURL,
             path: "/api.php/v1/user",
             token: token
         )
 
-        if let user = try? JSONDecoder().decode(ZentaoCurrentUser.self, from: data) {
-            return user
+        if let response = try? JSONDecoder().decode(ZentaoUserResponse.self, from: data) {
+            return ZentaoUser(
+                id: response.profile.id,
+                account: response.profile.account,
+                realname: response.profile.realname,
+                role: response.profile.role,
+                dept: response.profile.dept,
+                email: response.profile.email,
+                mobile: response.profile.mobile,
+                join: response.profile.join,
+                admin: response.profile.admin
+            )
         }
 
-        if let wrapped: ZentaoCurrentUser = try? decodeWrappedObject(
-            ZentaoCurrentUser.self,
-            from: data,
-            rootKeys: ["data", "user", "profile"]
-        ) {
-            return wrapped
-        }
-
-        DebugLogger.logResponsePreview(path: "/api.php/v1/user", data: data)
         throw ZentaoAPIError.invalidResponse
     }
 
-    func fetchAssignedTasks(baseURL: String, token: String) async throws -> [ZentaoTask] {
+    // MARK: - 3. 获取当前分配的任务
+
+    func fetchAssignedTasks(baseURL: String, token: String) async throws -> [ZentaoTaskItem] {
         let data = try await request(
             baseURL: baseURL,
-            path: "/api.php/v1/tasks?assignedTo=me"
-        ,
+            path: "/my-work-task-assignedTo.json",
             token: token
         )
 
-        return try decodeWrappedArray(
-            ZentaoTask.self,
-            from: data,
-            rootKeys: ["data", "tasks", "items"]
-        )
+        return try parseTaskListResponse(data)
     }
 
-    func fetchLegacyAssignedTasks(baseURL: String, token: String) async throws -> [ZentaoTask] {
-        let candidatePaths = [
-            "/my-work-task-assignedTo.json?zin=1",
-            "/my-work-task-assignedTo.json?mode=json&zin=1",
-            "/my-work-task-assignedTo.html?zin=1"
-        ]
+    // MARK: - 4. 获取我参与的任务（历史）
 
-        var lastError: Error?
+    func fetchMyInvolvedTasks(baseURL: String, token: String) async throws -> [ZentaoTaskItem] {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/my-contribute-task-myInvolved--id_desc.json",
+            token: token
+        )
 
-        for path in candidatePaths {
-            do {
-                let data = try await request(
-                    baseURL: baseURL,
-                    path: path,
-                    token: token
-                )
+        return try parseTaskListResponse(data)
+    }
 
-                DebugLogger.log("Legacy endpoint \(path) returned \(data.count) bytes")
-                DebugLogger.logResponsePreview(path: path, data: data)
+    // MARK: - 5. 获取任务详情
 
-                let legacyJSONTasks = parseLegacyAssignedTasksJSON(data)
-                if !legacyJSONTasks.isEmpty {
-                    DebugLogger.log("Loaded tasks from legacy JSON endpoint \(path); count=\(legacyJSONTasks.count)")
-                    return legacyJSONTasks
-                }
+    func fetchTaskDetail(baseURL: String, token: String, taskID: Int) async throws -> ZentaoTaskDetailData {
+        let data = try await request(
+            baseURL: baseURL,
+            path: "/task-view-\(taskID).json",
+            token: token
+        )
 
-                let htmlTasks = parseLegacyTaskListHTML(data)
-                if !htmlTasks.isEmpty {
-                    DebugLogger.log("Parsed tasks from legacy HTML endpoint \(path); count=\(htmlTasks.count)")
-                    return htmlTasks
-                }
-
-                if let tasks = try? decodeWrappedArray(
-                    ZentaoTask.self,
-                    from: data,
-                    rootKeys: ["data", "tasks", "items"]
-                ), !tasks.isEmpty {
-                    DebugLogger.log("Loaded tasks from generic legacy decoder \(path); count=\(tasks.count)")
-                    return tasks
-                }
-
-                DebugLogger.log("Legacy endpoint \(path) returned no parsable tasks")
-            } catch {
-                lastError = error
-                DebugLogger.log("Legacy endpoint \(path) failed: \(error.localizedDescription)")
-            }
+        guard let response = try? JSONDecoder().decode(ZentaoTaskDetailResponse.self, from: data),
+              let innerData = response.data.data(using: .utf8),
+              let detailData = try? JSONDecoder().decode(ZentaoTaskDetailData.self, from: innerData) else {
+            throw ZentaoAPIError.invalidResponse
         }
 
-        if let lastError {
-            throw lastError
-        }
-
-        throw ZentaoAPIError.message("旧版“我的任务”入口未返回可解析的任务数据。")
+        return detailData
     }
 
-    func fetchProjects(baseURL: String, token: String) async throws -> [ZentaoProject] {
-        let data = try await request(
-            baseURL: baseURL,
-            path: "/api.php/v1/projects?limit=1000",
-            token: token
-        )
-
-        return try decodeWrappedArray(
-            ZentaoProject.self,
-            from: data,
-            rootKeys: ["data", "projects", "items"]
-        )
-    }
-
-    func fetchExecutions(baseURL: String, token: String) async throws -> [ZentaoExecution] {
-        let data = try await request(
-            baseURL: baseURL,
-            path: "/api.php/v1/executions?limit=1000",
-            token: token
-        )
-
-        return try decodeWrappedArray(
-            ZentaoExecution.self,
-            from: data,
-            rootKeys: ["data", "executions", "items"]
-        )
-    }
-
-    func fetchProjectExecutions(baseURL: String, token: String, projectID: Int) async throws -> [ZentaoExecution] {
-        let data = try await request(
-            baseURL: baseURL,
-            path: "/api.php/v1/projects/\(projectID)/executions?limit=1000",
-            token: token
-        )
-
-        return try decodeWrappedArray(
-            ZentaoExecution.self,
-            from: data,
-            rootKeys: ["data", "executions", "items"]
-        )
-    }
-
-    func fetchExecutionTasks(
-        baseURL: String,
-        token: String,
-        executionID: Int,
-        status: String? = nil
-    ) async throws -> [ZentaoTask] {
-        let path: String
-        if let status, !status.isEmpty {
-            path = "/api.php/v1/executions/\(executionID)/tasks?status=\(status)&limit=1000"
-        } else {
-            path = "/api.php/v1/executions/\(executionID)/tasks"
-        }
-
-        let data = try await request(
-            baseURL: baseURL,
-            path: path,
-            token: token
-        )
-
-        return try decodeWrappedArray(
-            ZentaoTask.self,
-            from: data,
-            rootKeys: ["data", "tasks", "items"]
-        )
-    }
-
-    func fetchMyInvolvedTasks(baseURL: String, token: String) async throws -> [ZentaoTask] {
-        DebugLogger.log("Fetching my involved tasks from /my-contribute-task-myInvolved")
-        let pageSize = 100
-        var allTasks: [Int: ZentaoTask] = [:]
-
-        var page = 1
-        while true {
-            let path = "/my-contribute-task-myInvolved-\(page)-\(pageSize)-id_desc.json"
-            do {
-                let data = try await request(
-                    baseURL: baseURL,
-                    path: path,
-                    token: token
-                )
-
-                guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let dataString = root["data"] as? String,
-                      let dataData = dataString.data(using: .utf8),
-                      let dataObject = try JSONSerialization.jsonObject(with: dataData) as? [String: Any] else {
-                    DebugLogger.log("myInvolved page \(page): unexpected response format")
-                    break
-                }
-
-                if let tasksDict = dataObject["tasks"] as? [String: [String: Any]] {
-                    for (idStr, taskDict) in tasksDict {
-                        guard let id = Int(idStr) else { continue }
-                        let name = taskDict["name"] as? String ?? ""
-                        let assignedTo = taskDict["assignedTo"] as? String
-                        let execution: Int?
-                        if let execObj = taskDict["execution"] as? [String: Any] {
-                            execution = execObj["id"] as? Int
-                        } else {
-                            execution = taskDict["execution"] as? Int
-                        }
-                        allTasks[id] = ZentaoTask(
-                            id: id,
-                            name: name,
-                            assignedTo: assignedTo,
-                            execution: execution
-                        )
-                    }
-                }
-
-                if let pager = dataObject["pager"] as? [String: Any] {
-                    let total = pager["total"] as? Int ?? 0
-                    let recTotal = pager["recTotal"] as? Int ?? 0
-                    let pageTotal = max(total, recTotal)
-                    let loadedCount = page * pageSize
-                    DebugLogger.log("myInvolved page \(page): loaded \(allTasks.count) unique tasks, total=\(pageTotal)")
-                    if loadedCount >= pageTotal {
-                        break
-                    }
-                } else {
-                    break
-                }
-            } catch {
-                DebugLogger.log("myInvolved page \(page) failed: \(error.localizedDescription)")
-                if allTasks.isEmpty {
-                    throw error
-                }
-                break
-            }
-
-            page += 1
-        }
-
-        let result = allTasks.values.sorted { $0.id < $1.id }
-        DebugLogger.log("myInvolved total: \(result.count) unique tasks")
-        return result
-    }
-
-    func fetchEstimates(baseURL: String, token: String, taskID: Int) async throws -> [ZentaoEstimate] {
-        let data = try await request(
-            baseURL: baseURL,
-            path: "/api.php/v1/tasks/\(taskID)/estimate",
-            token: token
-        )
-
-        return try decodeWrappedArray(
-            ZentaoEstimate.self,
-            from: data,
-            rootKeys: ["data", "estimates", "items", "effort"]
-        )
-    }
+    // MARK: - Private
 
     private func request(
         baseURL: String,
@@ -327,7 +138,6 @@ struct ZentaoAPIClient: Sendable {
         request.httpMethod = method
         request.httpBody = body
         request.timeoutInterval = 20
-        DebugLogger.log("HTTP \(method) \(url.absoluteString)")
 
         if body != nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -342,27 +152,17 @@ struct ZentaoAPIClient: Sendable {
             throw ZentaoAPIError.invalidResponse
         }
 
-        DebugLogger.log("HTTP \(method) \(url.absoluteString) -> \(httpResponse.statusCode), bytes=\(data.count)")
-
         switch httpResponse.statusCode {
         case 200 ..< 300:
             return data
         case 401:
             throw ZentaoAPIError.unauthorized
         case 403:
-            DebugLogger.logResponsePreview(path: path, data: data)
             let message = String(data: data, encoding: .utf8)
-            throw ZentaoAPIError.requestFailed(
-                statusCode: httpResponse.statusCode,
-                message: message
-            )
+            throw ZentaoAPIError.requestFailed(statusCode: httpResponse.statusCode, message: message)
         default:
-            DebugLogger.logResponsePreview(path: path, data: data)
             let message = String(data: data, encoding: .utf8)
-            throw ZentaoAPIError.requestFailed(
-                statusCode: httpResponse.statusCode,
-                message: message
-            )
+            throw ZentaoAPIError.requestFailed(statusCode: httpResponse.statusCode, message: message)
         }
     }
 
@@ -393,235 +193,13 @@ struct ZentaoAPIClient: Sendable {
         return components.url
     }
 
-    private func decodeWrappedArray<T: Decodable>(
-        _ type: T.Type,
-        from data: Data,
-        rootKeys: [String]
-    ) throws -> [T] {
-        let decoder = JSONDecoder()
-        if let direct = try? decoder.decode([T].self, from: data) {
-            return direct
+    private func parseTaskListResponse(_ data: Data) throws -> [ZentaoTaskItem] {
+        guard let response = try? JSONDecoder().decode(ZentaoTaskListResponse.self, from: data),
+              let innerData = response.data.data(using: .utf8),
+              let listData = try? JSONDecoder().decode(ZentaoTaskListData.self, from: innerData) else {
+            throw ZentaoAPIError.invalidResponse
         }
 
-        if let directDictionary = try? decoder.decode([String: T].self, from: data) {
-            return values(from: directDictionary)
-        }
-
-        if let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            for key in rootKeys {
-                guard let nested = object[key] else { continue }
-                if let decoded = try? decodeArrayLikeValue(nested, as: T.self, decoder: decoder) {
-                    return decoded
-                }
-            }
-        }
-
-        DebugLogger.logResponsePreview(path: rootKeys.joined(separator: ","), data: data)
-        throw ZentaoAPIError.invalidResponse
-    }
-
-    private func decodeWrappedObject<T: Decodable>(
-        _ type: T.Type,
-        from data: Data,
-        rootKeys: [String]
-    ) throws -> T {
-        let decoder = JSONDecoder()
-        if let direct = try? decoder.decode(T.self, from: data) {
-            return direct
-        }
-
-        if let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            for key in rootKeys {
-                guard let nested = object[key] else { continue }
-                let nestedData = try JSONSerialization.data(withJSONObject: nested)
-                if let decoded = try? decoder.decode(T.self, from: nestedData) {
-                    return decoded
-                }
-            }
-        }
-
-        DebugLogger.logResponsePreview(path: rootKeys.joined(separator: ","), data: data)
-        throw ZentaoAPIError.invalidResponse
-    }
-
-    private func decodeArrayLikeValue<T: Decodable>(
-        _ value: Any,
-        as type: T.Type,
-        decoder: JSONDecoder
-    ) throws -> [T] {
-        let nestedData = try JSONSerialization.data(withJSONObject: value)
-
-        if let decoded = try? decoder.decode([T].self, from: nestedData) {
-            return decoded
-        }
-
-        if let decodedDictionary = try? decoder.decode([String: T].self, from: nestedData) {
-            return values(from: decodedDictionary)
-        }
-
-        throw ZentaoAPIError.invalidResponse
-    }
-
-    private func values<T>(from dictionary: [String: T]) -> [T] {
-        dictionary
-            .sorted { left, right in
-                if let leftInt = Int(left.key), let rightInt = Int(right.key) {
-                    return leftInt < rightInt
-                }
-
-                return left.key < right.key
-            }
-            .map(\.value)
-    }
-
-    private func parseLegacyAssignedTasksJSON(_ data: Data) -> [ZentaoTask] {
-        guard let root = try? JSONSerialization.jsonObject(with: data) else {
-            return []
-        }
-
-        var uniqueTasks: [Int: ZentaoTask] = [:]
-        collectLegacyTasks(from: root, into: &uniqueTasks)
-
-        return uniqueTasks.values.sorted { left, right in
-            left.id < right.id
-        }
-    }
-
-    private func collectLegacyTasks(from value: Any, into tasks: inout [Int: ZentaoTask]) {
-        if let dictionary = value as? [String: Any] {
-            if let task = legacyTask(from: dictionary) {
-                tasks[task.id] = task
-            }
-
-            for nested in dictionary.values {
-                collectLegacyTasks(from: nested, into: &tasks)
-            }
-            return
-        }
-
-        if let array = value as? [Any] {
-            for nested in array {
-                collectLegacyTasks(from: nested, into: &tasks)
-            }
-            return
-        }
-
-        if let string = value as? String,
-           let nestedData = string.data(using: .utf8),
-           let nestedRoot = try? JSONSerialization.jsonObject(with: nestedData) {
-            collectLegacyTasks(from: nestedRoot, into: &tasks)
-        }
-    }
-
-    private func legacyTask(from dictionary: [String: Any]) -> ZentaoTask? {
-        let idKeys = ["id", "taskID", "taskId"]
-        let nameKeys = ["name", "title", "taskName"]
-        let assignedKeys = ["assignedTo", "assignedto"]
-        let executionKeys = ["execution", "executionID", "executionId"]
-
-        guard let id = firstIntValue(for: idKeys, in: dictionary),
-              let name = firstStringValue(for: nameKeys, in: dictionary),
-              !name.isEmpty else {
-            return nil
-        }
-
-        return ZentaoTask(
-            id: id,
-            name: name,
-            assignedTo: firstStringValue(for: assignedKeys, in: dictionary),
-            execution: firstIntValue(for: executionKeys, in: dictionary)
-        )
-    }
-
-    private func firstStringValue(for keys: [String], in dictionary: [String: Any]) -> String? {
-        for key in keys {
-            guard let value = dictionary[key] else { continue }
-            if let string = value as? String {
-                let normalized = normalizeLegacyHTMLText(string)
-                if !normalized.isEmpty {
-                    return normalized
-                }
-            } else if let number = value as? NSNumber {
-                return number.stringValue
-            }
-        }
-        return nil
-    }
-
-    private func firstIntValue(for keys: [String], in dictionary: [String: Any]) -> Int? {
-        for key in keys {
-            guard let value = dictionary[key] else { continue }
-            if let intValue = value as? Int {
-                return intValue
-            }
-            if let number = value as? NSNumber {
-                return number.intValue
-            }
-            if let stringValue = value as? String, let intValue = Int(stringValue) {
-                return intValue
-            }
-        }
-        return nil
-    }
-
-    private func parseLegacyTaskListHTML(_ data: Data) -> [ZentaoTask] {
-        guard let html = String(data: data, encoding: .utf8), !html.isEmpty else {
-            return []
-        }
-
-        let pattern = #"href=["'][^"']*task(?:-view)?-(\d+)\.html[^"']*["'][^>]*>(.*?)</a>"#
-        guard let regex = try? NSRegularExpression(
-            pattern: pattern,
-            options: [.caseInsensitive, .dotMatchesLineSeparators]
-        ) else {
-            return []
-        }
-
-        let range = NSRange(html.startIndex..<html.endIndex, in: html)
-        let matches = regex.matches(in: html, options: [], range: range)
-        var uniqueTasks: [Int: ZentaoTask] = [:]
-
-        for match in matches {
-            guard match.numberOfRanges >= 3,
-                  let idRange = Range(match.range(at: 1), in: html),
-                  let nameRange = Range(match.range(at: 2), in: html),
-                  let id = Int(html[idRange]) else {
-                continue
-            }
-
-            let rawName = String(html[nameRange])
-            let name = normalizeLegacyHTMLText(rawName)
-            guard !name.isEmpty else { continue }
-
-            uniqueTasks[id] = ZentaoTask(
-                id: id,
-                name: name,
-                assignedTo: nil,
-                execution: nil
-            )
-        }
-
-        return uniqueTasks.values.sorted { left, right in
-            left.id < right.id
-        }
-    }
-
-    private func normalizeLegacyHTMLText(_ rawValue: String) -> String {
-        let withoutTags = rawValue.replacingOccurrences(
-            of: "<[^>]+>",
-            with: " ",
-            options: .regularExpression
-        )
-        let decoded = withoutTags
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#039;", with: "'")
-
-        return decoded
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return listData.tasks
     }
 }
