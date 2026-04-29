@@ -281,12 +281,32 @@ struct ZentaoTaskDetailData: Codable, Sendable {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
 
+        var consumedIDs = Set<Int>()
         var total: Double = 0
-        for (_, action) in actions where action.action == "recordworkhour" {
-            if let actionDate = parseDate(action.date), calendar.isDate(actionDate, inSameDayAs: today) {
-                if let hours = Double(action.extra ?? "") {
-                    total += hours
+
+        for (_, action) in actions {
+            guard let actionDate = parseDate(action.date),
+                  calendar.isDate(actionDate, inSameDayAs: today) else {
+                continue
+            }
+
+            if let history = action.history {
+                for record in history {
+                    if record.field == "consumed",
+                       let oldVal = Double(record.old ?? ""),
+                       let newVal = Double(record.new ?? ""),
+                       newVal > oldVal {
+                        total += (newVal - oldVal)
+                        consumedIDs.insert(action.id)
+                    }
                 }
+            }
+
+            if !consumedIDs.contains(action.id),
+               action.action == "recordworkhour",
+               let hours = Double(action.extra ?? "") {
+                total += hours
+                consumedIDs.insert(action.id)
             }
         }
         return total
@@ -308,9 +328,22 @@ struct ZentaoTaskAction: Codable, Sendable {
     let date: String
     let comment: String?
     let extra: String?
+    let history: [ZentaoActionHistory]?
 
     enum CodingKeys: String, CodingKey {
-        case id, objectType, objectID, actor, action, date, comment, extra
+        case id, objectType, objectID, actor, action, date, comment, extra, history
+    }
+}
+
+// MARK: - Action History (操作历史记录，含工时变更)
+
+struct ZentaoActionHistory: Codable, Sendable {
+    let field: String?
+    let old: String?
+    let new: String?
+
+    enum CodingKeys: String, CodingKey {
+        case field, old, new
     }
 }
 
