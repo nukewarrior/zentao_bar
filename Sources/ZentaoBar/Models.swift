@@ -185,10 +185,20 @@ struct ZentaoTaskListData: Codable, Sendable {
 
         // tasks 可能是数组，也可能是字典
         if let tasksArray = try? container.decode([ZentaoTaskItem].self, forKey: .tasks) {
+            DebugLogger.log("ZentaoTaskListData: parsed tasks as array, count=\(tasksArray.count)")
             tasks = tasksArray
         } else if let tasksDict = try? container.decode([String: ZentaoTaskItem].self, forKey: .tasks) {
+            DebugLogger.log("ZentaoTaskListData: parsed tasks as dict, count=\(tasksDict.count)")
             tasks = tasksDict.sorted { Int($0.key) ?? 0 < Int($1.key) ?? 0 }.map { $0.value }
         } else {
+            // 尝试查看原始数据结构
+            if let rawData = try? container.decode([String: Any].self, forKey: .tasks) {
+                DebugLogger.log("ZentaoTaskListData: tasks field has unknown structure: \(rawData)")
+            } else if let rawArray = try? container.decode([Any].self, forKey: .tasks) {
+                DebugLogger.log("ZentaoTaskListData: tasks field is an array of unknown type: \(rawArray)")
+            } else {
+                DebugLogger.log("ZentaoTaskListData: tasks field is nil or empty")
+            }
             tasks = []
         }
     }

@@ -210,12 +210,29 @@ struct ZentaoAPIClient: Sendable {
     }
 
     private func parseTaskListResponse(_ data: Data) throws -> [ZentaoTaskItem] {
-        guard let response = try? JSONDecoder().decode(ZentaoTaskListResponse.self, from: data),
-              let innerData = response.data.data(using: .utf8),
-              let listData = try? JSONDecoder().decode(ZentaoTaskListData.self, from: innerData) else {
+        guard let response = try? JSONDecoder().decode(ZentaoTaskListResponse.self, from: data) else {
+            DebugLogger.log("parseTaskListResponse: Failed to decode outer response")
             throw ZentaoAPIError.invalidResponse
         }
 
+        DebugLogger.log("parseTaskListResponse: status=\(response.status), data=\(response.data.prefix(200))")
+
+        guard !response.data.isEmpty, response.data != "null" else {
+            DebugLogger.log("parseTaskListResponse: data is empty or null")
+            throw ZentaoAPIError.invalidResponse
+        }
+
+        guard let innerData = response.data.data(using: .utf8) else {
+            DebugLogger.log("parseTaskListResponse: Failed to convert inner data to UTF-8")
+            throw ZentaoAPIError.invalidResponse
+        }
+
+        guard let listData = try? JSONDecoder().decode(ZentaoTaskListData.self, from: innerData) else {
+            DebugLogger.log("parseTaskListResponse: Failed to decode inner data: \(response.data)")
+            throw ZentaoAPIError.invalidResponse
+        }
+
+        DebugLogger.log("parseTaskListResponse: parsed \(listData.tasks.count) tasks")
         return listData.tasks
     }
 }
