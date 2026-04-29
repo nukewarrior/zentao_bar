@@ -239,7 +239,7 @@ final class AppState: ObservableObject {
                 )
                 DebugLogger.log("Task work: id=\(task.id), name=\(task.name), todayConsumed=\(todayConsumed)h, url=\(work.url)")
                 return work
-            }
+            }.sorted { $0.totalConsumed > $1.totalConsumed }
 
             totalConsumed = taskWorks.reduce(0) { $0 + $1.totalConsumed }
             lastUpdatedAt = Date()
