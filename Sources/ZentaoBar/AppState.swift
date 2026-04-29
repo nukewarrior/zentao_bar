@@ -155,7 +155,7 @@ final class AppState: ObservableObject {
             try tokenStore.saveToken(token, baseURL: baseURL, account: account)
             try tokenStore.savePassword(password, baseURL: baseURL, account: account)
             reconfigureAutoRefresh()
-            await refresh(force: true)
+            await refresh(force: true, bypassInFlight: true)
             return true
         } catch {
             loadState = .authRequired
@@ -165,14 +165,14 @@ final class AppState: ObservableObject {
         }
     }
 
-    func refresh(force: Bool = true) async {
+    func refresh(force: Bool = true, bypassInFlight: Bool = false) async {
         guard let config, let token = currentToken else {
             loadState = .authRequired
             reconfigureAutoRefresh()
             return
         }
 
-        if isRefreshingInFlight {
+        if !bypassInFlight, isRefreshingInFlight {
             return
         }
 
@@ -259,7 +259,6 @@ final class AppState: ObservableObject {
             if let apiError = error as? ZentaoAPIError,
                case .unauthorized = apiError {
                 if await attemptReLogin() {
-                    await refresh(force: true)
                     return
                 } else {
                     tokenStore.deleteToken(baseURL: config.baseURL, account: config.account)
