@@ -237,6 +237,12 @@ struct ZentaoAPIClient: Sendable {
             throw ZentaoAPIError.invalidResponse
         }
 
+        if let title = listData.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           title.contains("用户登录") || title.lowercased().contains("login") {
+            DebugLogger.log("parseTaskListResponse: Detected login title '\(title)', token may be expired")
+            throw ZentaoAPIError.unauthorized
+        }
+
         DebugLogger.log("parseTaskListResponse: parsed \(listData.tasks.count) tasks")
         return listData.tasks
     }
