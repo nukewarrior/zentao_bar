@@ -229,6 +229,10 @@ struct ZentaoAPIClient: Sendable {
 
         guard let listData = try? JSONDecoder().decode(ZentaoTaskListData.self, from: innerData) else {
             DebugLogger.log("parseTaskListResponse: Failed to decode inner data: \(response.data)")
+            if response.data.contains("用户登录") || response.data.contains("login") {
+                DebugLogger.log("parseTaskListResponse: Detected login page, token may be expired")
+                throw ZentaoAPIError.unauthorized
+            }
             throw ZentaoAPIError.invalidResponse
         }
 
