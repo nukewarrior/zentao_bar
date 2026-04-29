@@ -22,21 +22,19 @@ enum RefreshIntervalOption: Double, CaseIterable, Identifiable {
     }
 }
 
-enum UpdateCheckIntervalOption: Double, CaseIterable, Identifiable {
-    case seconds30 = 30
-    case seconds60 = 60
-    case seconds120 = 120
+struct UpdateCheckIntervalOption: Identifiable, Hashable, Sendable {
+    let days: Int
 
-    var id: Double { rawValue }
+    var id: Int { days }
+    var seconds: TimeInterval { TimeInterval(days * 86_400) }
+    var title: String { "\(days) 天" }
 
-    var seconds: TimeInterval { rawValue }
+    static let minDays = 1
+    static let maxDays = 7
+    static let `default` = UpdateCheckIntervalOption(days: 1)
 
-    var title: String {
-        "\(Int(rawValue)) 秒"
-    }
-
-    init?(seconds: TimeInterval) {
-        self.init(rawValue: seconds)
+    init(days: Int) {
+        self.days = min(Self.maxDays, max(Self.minDays, days))
     }
 }
 
@@ -78,8 +76,12 @@ final class PreferencesStore: ObservableObject {
         if defaults.object(forKey: updateChecksEnabledKey) == nil {
             defaults.set(true, forKey: updateChecksEnabledKey)
         }
-        if defaults.object(forKey: updateCheckIntervalKey) == nil {
-            defaults.set(UpdateCheckIntervalOption.seconds120.rawValue, forKey: updateCheckIntervalKey)
+        let storedUpdateDays = defaults.integer(forKey: updateCheckIntervalKey)
+        if (UpdateCheckIntervalOption.minDays...UpdateCheckIntervalOption.maxDays).contains(storedUpdateDays) {
+            updateCheckInterval = UpdateCheckIntervalOption(days: storedUpdateDays)
+        } else {
+            updateCheckInterval = .default
+            defaults.set(UpdateCheckIntervalOption.default.days, forKey: updateCheckIntervalKey)
         }
         autoCloseAfterTaskClick = defaults.bool(forKey: autoCloseTaskKey)
         autoCloseAfterActionClick = defaults.bool(forKey: autoCloseActionKey)
@@ -88,9 +90,6 @@ final class PreferencesStore: ObservableObject {
 
         let storedInterval = defaults.double(forKey: autoRefreshIntervalKey)
         autoRefreshInterval = RefreshIntervalOption(rawValue: storedInterval) ?? .seconds60
-
-        let storedUpdateInterval = defaults.double(forKey: updateCheckIntervalKey)
-        updateCheckInterval = UpdateCheckIntervalOption(rawValue: storedUpdateInterval) ?? .seconds120
     }
 
     func openSettings(tab: SettingsTab) {
@@ -124,6 +123,6 @@ final class PreferencesStore: ObservableObject {
 
     func setUpdateCheckInterval(_ interval: UpdateCheckIntervalOption) {
         updateCheckInterval = interval
-        defaults.set(interval.rawValue, forKey: updateCheckIntervalKey)
+        defaults.set(interval.days, forKey: updateCheckIntervalKey)
     }
 }

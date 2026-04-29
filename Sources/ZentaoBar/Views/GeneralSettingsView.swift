@@ -35,7 +35,7 @@ struct GeneralSettingsView: View {
                             )
                         )
 
-                        updateIntervalPickerRow
+                        updateIntervalSliderRow
                             .disabled(!preferences.updateChecksEnabled)
                             .opacity(preferences.updateChecksEnabled ? 1 : 0.5)
 
@@ -160,21 +160,25 @@ struct GeneralSettingsView: View {
         }
     }
 
-    private var updateIntervalPickerRow: some View {
-        HStack(alignment: .center, spacing: 16) {
-            Text("检查间隔")
-                .font(.body.weight(.medium))
-                .frame(width: 88, alignment: .leading)
-
-            Picker("检查间隔", selection: Binding(
-                get: { preferences.updateCheckInterval },
-                set: { preferences.setUpdateCheckInterval($0) }
-            )) {
-                ForEach(UpdateCheckIntervalOption.allCases) { option in
-                    Text(option.title).tag(option)
-                }
+    private var updateIntervalSliderRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 16) {
+                Text("检查间隔")
+                    .font(.body.weight(.medium))
+                    .frame(width: 88, alignment: .leading)
+                Text("\(preferences.updateCheckInterval.days) 天")
+                    .font(.body.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            .pickerStyle(.segmented)
+            Slider(
+                value: Binding(
+                    get: { Double(preferences.updateCheckInterval.days) },
+                    set: { preferences.setUpdateCheckInterval(UpdateCheckIntervalOption(days: Int($0.rounded()))) }
+                ),
+                in: Double(UpdateCheckIntervalOption.minDays)...Double(UpdateCheckIntervalOption.maxDays),
+                step: 1
+            )
+            .padding(.leading, 104)
         }
     }
 
