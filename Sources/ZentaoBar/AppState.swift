@@ -206,28 +206,18 @@ final class AppState: ObservableObject {
 
             let allTasks = mergeTasks(current: currentTasks, involved: involvedTasks)
 
-            var taskIDsWithActionToday: [Int] = []
-            if let userID = config.userID {
-                let dynamicData = try await apiClient.fetchTodayDynamic(
-                    baseURL: config.baseURL,
-                    token: token,
-                    userID: userID
-                )
-                taskIDsWithActionToday = dynamicData.taskIDsWithActionToday
-            }
-
             let taskDetails = await withTaskGroup(of: (Int, Double).self) { group in
-                for taskID in taskIDsWithActionToday {
+                for task in allTasks {
                     group.addTask {
                         do {
                             let detail = try await self.apiClient.fetchTaskDetail(
                                 baseURL: config.baseURL,
                                 token: token,
-                                taskID: taskID
+                                taskID: task.id
                             )
-                            return (taskID, detail.todayConsumed())
+                            return (task.id, detail.todayConsumed())
                         } catch {
-                            return (taskID, 0)
+                            return (task.id, 0)
                         }
                     }
                 }
