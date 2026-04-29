@@ -111,16 +111,6 @@ struct GeneralSettingsView: View {
                         }
                     }
 
-                    section("数据来源说明") {
-                        settingRow("任务来源", value: "/tasks?assignedTo=me")
-                        detailText("优先使用新版 API 获取分配给当前账号的任务。")
-                        settingRow("回退一", value: "legacy my-work")
-                        detailText("新版任务接口无权限时，回退到旧版“我的任务”入口。")
-                        settingRow("回退二", value: "executions / projects")
-                        detailText("旧入口仍不可用时，再回退到执行和项目遍历策略。")
-                        settingRow("当前任务数", value: "\(appState.currentTaskCount)")
-                        settingRow("当前刷新策略", value: appState.refreshPolicyDescription)
-                    }
                 }
                 .frame(maxWidth: 620, alignment: .leading)
                 .padding(18)
