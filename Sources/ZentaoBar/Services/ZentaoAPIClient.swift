@@ -215,8 +215,8 @@ struct ZentaoAPIClient: Sendable {
             throw ZentaoAPIError.invalidResponse
         }
 
-        let decodedData = response.data.utf8DecodedString ?? response.data
-        DebugLogger.log("parseTaskListResponse: status=\(response.status), data=\(decodedData.prefix(200))")
+        let decodedData = response.data.unicodeDecodedString
+        DebugLogger.log("parseTaskListResponse: status=\(response.status), data=\(decodedData.prefix(200)))")
 
         guard !response.data.isEmpty, response.data != "null" else {
             DebugLogger.log("parseTaskListResponse: data is empty or null")
@@ -229,7 +229,7 @@ struct ZentaoAPIClient: Sendable {
         }
 
         guard let listData = try? JSONDecoder().decode(ZentaoTaskListData.self, from: innerData) else {
-            DebugLogger.log("parseTaskListResponse: Failed to decode inner data: \(decodedData)")
+            DebugLogger.log("parseTaskListResponse: Failed to decode inner data: \(decodedData.unicodeDecodedString)")
             if response.data.contains("用户登录") || response.data.contains("login") {
                 DebugLogger.log("parseTaskListResponse: Detected login page, token may be expired")
                 throw ZentaoAPIError.unauthorized
@@ -243,8 +243,33 @@ struct ZentaoAPIClient: Sendable {
 }
 
 extension String {
-    var utf8DecodedString: String? {
-        guard let data = self.data(using: .utf8) else { return nil }
-        return String(data: data, encoding: .utf8)
+    /// 将 Unicode 转义序列（如 \u7528\u6237）转换为中文
+    var unicodeDecodedString: String {
+        guard let data = self.data(using: .utf8) else { return self }
+        guard let decoded = String(data: data, encoding: .utf8) else { return self }
+        
+        var result = decoded
+        let pattern = #"\\u([0-9a-fA-F]{4})"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return decoded
+        }
+        
+        var searchRange = NSRange(result.startIndex..., in: result)
+        while let match = regex.firstMatch(in: result, options: [], range: searchRange) {
+            guard let range = Range(match.range, in: result),
+                  let hexRange = Range(match.range(at: 1), in: result) else { break }
+            
+            let hex = String(result[hexRange])
+            if let codepoint = UInt32(hex, radix: 16),
+               let scalar = UnicodeScalar(codepoint) {
+                let replacement = String(Character(scalar))
+                result.replaceSubrange(range, with: replacement)
+                searchRange = NSRange(result.startIndex..., in: result)
+            } else {
+                break
+            }
+        }
+        
+        return result
     }
 }
