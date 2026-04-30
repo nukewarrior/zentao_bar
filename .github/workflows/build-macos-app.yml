@@ -169,7 +169,7 @@ jobs:
           } > "${INFO_PATH}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.meta.outputs.base_name }}
           path: |
@@ -289,7 +289,7 @@ jobs:
           } > "${INFO_PATH}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.meta.outputs.base_name }}
           path: |
