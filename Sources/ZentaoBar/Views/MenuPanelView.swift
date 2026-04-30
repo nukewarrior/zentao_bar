@@ -14,9 +14,12 @@ struct MenuPanelView: View {
             case .authRequired:
                 authRequiredContent
             case .failed, .empty, .loading, .loaded, .idle:
-                header
-                statusBanner
-                taskSection
+                VStack(alignment: .leading, spacing: 10) {
+                    header
+                    statusBanner
+                    taskSection
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
                 footer
                 footerErrorMessage
             }
@@ -220,13 +223,16 @@ struct MenuPanelView: View {
 
     private var authRequiredContent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("登录已失效，请重新登录")
-                .font(.headline)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("登录已失效，请重新登录")
+                    .font(.headline)
 
-            Text(appState.errorMessage ?? "请先配置禅道地址、账号和密码。")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(appState.errorMessage ?? "请先配置禅道地址、账号和密码。")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
 
             Divider()
                 .overlay(.white.opacity(0.08))
