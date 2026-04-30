@@ -23,7 +23,8 @@ struct MenuPanelView: View {
         }
         .padding(14)
         .frame(width: 320)
-        .frame(minHeight: 330, maxHeight: screenMaxHeight / 2)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxHeight: screenMaxHeight / 2, alignment: .topLeading)
         .background(
             Color(nsColor: NSColor.windowBackgroundColor)
                 .opacity(0.98)
@@ -288,14 +289,16 @@ struct MenuPanelView: View {
         Text("当前没有分配给你的任务")
             .font(.subheadline)
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 8)
     }
 
     private var failedTaskPlaceholder: some View {
         Text("任务列表加载失败")
             .font(.subheadline)
             .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.vertical, 8)
     }
 
     private var loadingContent: some View {
@@ -306,7 +309,8 @@ struct MenuPanelView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.vertical, 8)
     }
 
     private func openSettingsWindow() {
@@ -377,4 +381,3 @@ struct MenuPanelView: View {
         }
     }
 }
-
