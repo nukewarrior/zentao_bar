@@ -10,7 +10,7 @@ struct AppConfig: Codable, Equatable, Sendable {
 
 // MARK: - Task Work (用于 UI 展示)
 
-struct TaskWork: Identifiable, Equatable, Sendable {
+struct TaskWork: Identifiable, Equatable, Sendable, Codable {
     let id: Int
     let name: String
     let url: String
@@ -47,10 +47,55 @@ struct TaskWork: Identifiable, Equatable, Sendable {
         return .none
     }
 
-    enum DeadlineType: Equatable, Sendable {
+    enum DeadlineType: Equatable, Sendable, Codable {
         case none
         case dueToday
         case overdue(days: Int)
+
+        enum CodingKeys: String, CodingKey {
+            case none
+            case dueToday
+            case overdue
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            if container.allKeys.contains(.none) {
+                self = .none
+            } else if container.allKeys.contains(.dueToday) {
+                self = .dueToday
+            } else if container.allKeys.contains(.overdue) {
+                let days = try container.decode(Int.self, forKey: .overdue)
+                self = .overdue(days: days)
+            } else {
+                throw DecodingError.dataCorrupted(
+                    DecodingError.Context(
+                        codingPath: container.codingPath,
+                        debugDescription: "Invalid DeadlineType value"
+                    )
+                )
+            }
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            switch self {
+            case .none:
+                try container.encode(true, forKey: .none)
+            case .dueToday:
+                try container.encode(true, forKey: .dueToday)
+            case .overdue(let days):
+                try container.encode(days, forKey: .overdue)
+            }
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case url
+        case deadline
+        case totalConsumed
     }
 }
 
