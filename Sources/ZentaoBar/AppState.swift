@@ -231,15 +231,19 @@ final class AppState: ObservableObject {
 
             taskWorks = allTasks.map { task in
                 let todayConsumed = taskDetails[task.id] ?? 0
-                let work = TaskWork(
+                return TaskWork(
                     id: task.id,
                     name: task.name,
                     url: "\(config.baseURL)/task-view-\(task.id).html",
+                    deadline: task.deadline,
                     totalConsumed: todayConsumed
                 )
-                DebugLogger.log("Task work: id=\(task.id), name=\(task.name), todayConsumed=\(todayConsumed)h, url=\(work.url)")
-                return work
-            }.sorted { $0.totalConsumed > $1.totalConsumed }
+            }.sorted { left, right in
+                let lhs = deadlinePriority(left)
+                let rhs = deadlinePriority(right)
+                if lhs != rhs { return lhs < rhs }
+                return left.totalConsumed > right.totalConsumed
+            }
 
             totalConsumed = taskWorks.reduce(0) { $0 + $1.totalConsumed }
             lastUpdatedAt = Date()
@@ -364,6 +368,14 @@ final class AppState: ObservableObject {
         guard config != nil, currentToken != nil else { return }
 
         await refresh(force: true)
+    }
+
+    private func deadlinePriority(_ task: TaskWork) -> Int {
+        switch task.deadlineType {
+        case .overdue: return 0
+        case .dueToday: return 1
+        case .none: return 2
+        }
     }
 
     private func mergeTasks(current: [ZentaoTaskItem], involved: [ZentaoTaskItem]) -> [ZentaoTaskItem] {

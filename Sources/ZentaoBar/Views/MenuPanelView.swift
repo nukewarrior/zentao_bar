@@ -117,19 +117,36 @@ struct MenuPanelView: View {
                             closeMenuWindow()
                         }
                     } label: {
-                        HStack(spacing: 8) {
-                            Text(task.name)
-                                .font(.subheadline)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        HStack(spacing: 6) {
+                            deadlineIndicator(for: task)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(task.name)
+                                    .font(.subheadline)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .foregroundStyle(deadlineTextColor(for: task))
+
+                                if case let .overdue(days) = task.deadlineType {
+                                    Text("逾期 \(days) 天")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(.red)
+                                } else if task.deadlineType == .dueToday {
+                                    Text("今天截止")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+
+                            Spacer(minLength: 4)
+
                             Text(task.formattedConsumedWithUnit)
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(deadlineAccentColor(for: task))
                                 .frame(width: 42, alignment: .trailing)
                         }
                         .contentShape(Rectangle())
-                        .padding(.vertical, 7)
+                        .padding(.vertical, 5)
                     }
                     .buttonStyle(.plain)
                     .help(task.name)
@@ -325,6 +342,36 @@ struct MenuPanelView: View {
             return true
         default:
             return false
+        }
+    }
+
+    @ViewBuilder
+    private func deadlineIndicator(for task: TaskWork) -> some View {
+        let color = deadlineAccentColor(for: task)
+        switch task.deadlineType {
+        case .overdue, .dueToday:
+            RoundedRectangle(cornerRadius: 2)
+                .fill(color)
+                .frame(width: 3)
+        case .none:
+            Color.clear
+                .frame(width: 3)
+        }
+    }
+
+    private func deadlineAccentColor(for task: TaskWork) -> Color {
+        switch task.deadlineType {
+        case .overdue: return .red
+        case .dueToday: return .orange
+        case .none: return .blue
+        }
+    }
+
+    private func deadlineTextColor(for task: TaskWork) -> Color {
+        switch task.deadlineType {
+        case .overdue: return .red
+        case .dueToday: return .orange
+        case .none: return .primary
         }
     }
 }

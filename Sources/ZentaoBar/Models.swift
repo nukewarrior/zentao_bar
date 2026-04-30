@@ -14,6 +14,7 @@ struct TaskWork: Identifiable, Equatable, Sendable {
     let id: Int
     let name: String
     let url: String
+    let deadline: String?
     var totalConsumed: Double
 
     var formattedConsumedWithUnit: String {
@@ -22,6 +23,34 @@ struct TaskWork: Identifiable, Equatable, Sendable {
         }
 
         return String(format: "%.1fh", totalConsumed)
+    }
+
+    var deadlineDate: Date? {
+        guard let deadline else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: deadline)
+    }
+
+    var deadlineType: DeadlineType {
+        guard let deadlineDate else { return .none }
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let dlDate = calendar.startOfDay(for: deadlineDate)
+
+        if dlDate < today {
+            let days = calendar.dateComponents([.day], from: dlDate, to: today).day ?? 0
+            return .overdue(days: days)
+        } else if dlDate == today {
+            return .dueToday
+        }
+        return .none
+    }
+
+    enum DeadlineType: Equatable, Sendable {
+        case none
+        case dueToday
+        case overdue(days: Int)
     }
 }
 
