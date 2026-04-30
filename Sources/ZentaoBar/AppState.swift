@@ -280,7 +280,10 @@ final class AppState: ObservableObject {
                     reconfigureAutoRefresh()
                 }
             } else if hadData {
-                loadState = .loaded
+                TaskCacheStore.clearTaskWorks(defaults: .standard, userID: config.userID)
+                taskWorks = []
+                totalConsumed = 0
+                loadState = .failed(friendlyErrorMessage(error))
             } else {
                 loadState = .failed(friendlyErrorMessage(error))
             }
