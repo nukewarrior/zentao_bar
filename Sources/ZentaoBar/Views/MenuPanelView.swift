@@ -7,6 +7,8 @@ struct MenuPanelView: View {
     @EnvironmentObject private var preferences: PreferencesStore
 
     var body: some View {
+        let screenMaxHeight = NSScreen.main?.visibleFrame.height ?? 1200
+
         VStack(alignment: .leading, spacing: 10) {
             switch appState.loadState {
             case .authRequired:
@@ -20,7 +22,8 @@ struct MenuPanelView: View {
             }
         }
         .padding(14)
-        .frame(width: 320, height: 330, alignment: .topLeading)
+        .frame(width: 320)
+        .frame(minHeight: 330, maxHeight: screenMaxHeight / 2)
         .background(
             Color(nsColor: NSColor.windowBackgroundColor)
                 .opacity(0.98)
@@ -54,7 +57,6 @@ struct MenuPanelView: View {
                 taskList
             }
         }
-        .frame(height: 210)
     }
 
     private var header: some View {
@@ -375,3 +377,4 @@ struct MenuPanelView: View {
         }
     }
 }
+
