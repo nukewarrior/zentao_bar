@@ -1,0 +1,41 @@
+name: Clean GitHub Pages
+
+on:
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+
+jobs:
+  clean-pages:
+    name: Deploy empty Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+
+    steps:
+      - name: Prepare empty pages content
+        run: |
+          mkdir -p ci-pages/notes
+          echo '[]' > ci-pages/releases.json
+          cat > ci-pages/appcast.xml << 'XML'
+      <?xml version="1.0" encoding="utf-8"?>
+      <rss version="2.0"
+           xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+        <channel>
+          <title>ZentaoBar Updates</title>
+          <link>https://nukewarrior.github.io/zentao_bar</link>
+          <description>No updates available</description>
+        </channel>
+      </rss>
+      XML
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ci-pages
+
+      - name: Deploy pages
+        id: deploy
+        uses: actions/deploy-pages@v4
