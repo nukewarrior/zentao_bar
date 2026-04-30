@@ -204,7 +204,27 @@ final class AppState: ObservableObject {
                 token: token
             )) ?? []
 
-            let allTasks = mergeTasks(current: currentTasks, involved: involvedTasks)
+            let dynamicTasksToday = (try? await apiClient.fetchTodayDynamic(
+                baseURL: config.baseURL,
+                token: token,
+                userID: config.userID ?? 0
+            ))
+
+            var allTasks = mergeTasks(current: currentTasks, involved: involvedTasks)
+
+            // 补充今日有动态但不在指派/参与列表中的任务（如已完成的）
+            if let dynamicTasksToday {
+                let existingIDs = Set(allTasks.map { $0.id })
+                for taskID in dynamicTasksToday.taskIDsWithActionToday {
+                    if !existingIDs.contains(taskID) {
+                        let name = dynamicTasksToday.dateGroups.values
+                            .flatMap { $0 }
+                            .first { $0.objectID == taskID && $0.objectType == "task" }?
+                            .objectName ?? "任务 #\(taskID)"
+                        allTasks.append(ZentaoTaskItem(id: taskID, name: name))
+                    }
+                }
+            }
 
             let taskDetails = await withTaskGroup(of: (Int, Double).self) { group in
                 for task in allTasks {

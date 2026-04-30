@@ -182,6 +182,43 @@ struct ZentaoTaskItem: Codable, Identifiable, Sendable {
         case projectName, executionName, storyID = "storyID", storyTitle
         case progress, estimateLabel, consumedLabel, leftLabel, desc
     }
+
+    /// 仅需 id 和 name 的最小初始化，用于占位（今日动态中的已完成任务）
+    init(id: Int, name: String) {
+        self.id = id
+        self.name = name
+        self.project = 0
+        self.execution = 0
+        self.module = nil
+        self.story = nil
+        self.type = nil
+        self.pri = nil
+        self.estimate = nil
+        self.consumed = nil
+        self.left = nil
+        self.deadline = nil
+        self.status = ""
+        self.assignedTo = nil
+        self.assignedToRealName = nil
+        self.openedBy = nil
+        self.openedDate = nil
+        self.assignedDate = nil
+        self.realStarted = nil
+        self.finishedBy = nil
+        self.finishedDate = nil
+        self.closedBy = nil
+        self.closedDate = nil
+        self.closedReason = nil
+        self.projectName = nil
+        self.executionName = nil
+        self.storyID = nil
+        self.storyTitle = nil
+        self.progress = nil
+        self.estimateLabel = nil
+        self.consumedLabel = nil
+        self.leftLabel = nil
+        self.desc = nil
+    }
 }
 
 // MARK: - Task List Response (外层)
