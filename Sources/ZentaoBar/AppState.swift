@@ -34,6 +34,7 @@ final class AppState: ObservableObject {
         self.apiClient = apiClient
         self.preferences = preferences
         self.lastUpdatedAt = configStore.loadLastRefreshDate()
+        restoreCachedTaskWorks()
         observePreferences()
     }
 
@@ -280,10 +281,7 @@ final class AppState: ObservableObject {
                     reconfigureAutoRefresh()
                 }
             } else if hadData {
-                TaskCacheStore.clearTaskWorks(defaults: .standard, userID: config.userID)
-                taskWorks = []
-                totalConsumed = 0
-                loadState = .failed(friendlyErrorMessage(error))
+                loadState = .loaded
             } else {
                 loadState = .failed(friendlyErrorMessage(error))
             }
@@ -415,6 +413,16 @@ final class AppState: ObservableObject {
         }
 
         return merged.values.sorted { $0.id < $1.id }
+    }
+
+    private func restoreCachedTaskWorks() {
+        guard let config, currentToken != nil else { return }
+        guard let cachedTaskWorks = TaskCacheStore.loadTaskWorks(defaults: .standard, userID: config.userID) else {
+            return
+        }
+
+        taskWorks = cachedTaskWorks
+        totalConsumed = cachedTaskWorks.reduce(0) { $0 + $1.totalConsumed }
     }
 
     private func friendlyErrorMessage(_ error: Error) -> String {
