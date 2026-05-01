@@ -34,6 +34,8 @@ final class AppState: ObservableObject {
         self.apiClient = apiClient
         self.preferences = preferences
         self.lastUpdatedAt = configStore.loadLastRefreshDate()
+        let lastUpdatedDescription = self.lastUpdatedAt.map { String(describing: $0) } ?? "nil"
+        DebugLogger.log("AppState init: lastUpdatedAt=\(lastUpdatedDescription)")
         restoreCachedTaskWorks()
         observePreferences()
     }
@@ -96,12 +98,16 @@ final class AppState: ObservableObject {
         guard !didBootstrap else { return }
         didBootstrap = true
 
+        DebugLogger.log("bootstrap: start")
+
         guard config != nil, currentToken != nil else {
+            DebugLogger.log("bootstrap: auth required")
             loadState = .authRequired
             reconfigureAutoRefresh()
             return
         }
 
+        DebugLogger.log("bootstrap: reconfigure auto refresh and refresh without force")
         reconfigureAutoRefresh()
         await refresh(force: false)
     }
@@ -168,12 +174,14 @@ final class AppState: ObservableObject {
 
     func refresh(force: Bool = true, bypassInFlight: Bool = false) async {
         guard let config, let token = currentToken else {
+            DebugLogger.log("refresh: skipped, auth required")
             loadState = .authRequired
             reconfigureAutoRefresh()
             return
         }
 
         if !bypassInFlight, isRefreshingInFlight {
+            DebugLogger.log("refresh: skipped, already in flight")
             return
         }
 
@@ -181,11 +189,13 @@ final class AppState: ObservableObject {
            let lastUpdatedAt,
            Date().timeIntervalSince(lastUpdatedAt) < preferences.autoRefreshInterval.seconds,
            !taskWorks.isEmpty {
+            DebugLogger.log("refresh: reuse recent in-memory tasks, count=\(taskWorks.count)")
             loadState = .loaded
             return
         }
 
         let hadData = !taskWorks.isEmpty
+        DebugLogger.log("refresh: start, force=\(force), hadData=\(hadData), currentCount=\(taskWorks.count)")
         isRefreshingInFlight = true
         loadState = .loading
         errorMessage = nil
@@ -269,20 +279,26 @@ final class AppState: ObservableObject {
             totalConsumed = taskWorks.reduce(0) { $0 + $1.totalConsumed }
             lastUpdatedAt = Date()
             configStore.saveLastRefreshDate(lastUpdatedAt)
+            TaskCacheStore.saveTaskWorks(taskWorks, defaults: .standard, userID: config.userID)
+            DebugLogger.log("refresh: success, taskCount=\(taskWorks.count), totalConsumed=\(formattedTotal)")
             loadState = taskWorks.isEmpty ? .empty : .loaded
         } catch {
             if let apiError = error as? ZentaoAPIError,
                case .unauthorized = apiError {
+                DebugLogger.log("refresh: unauthorized, attempting relogin")
                 if await attemptReLogin() {
                     return
                 } else {
                     tokenStore.deleteToken(baseURL: config.baseURL, account: config.account)
+                    DebugLogger.log("refresh: relogin failed, auth required")
                     loadState = .authRequired
                     reconfigureAutoRefresh()
                 }
             } else if hadData {
+                DebugLogger.log("refresh: failed with stale data preserved, error=\(friendlyErrorMessage(error))")
                 loadState = .loaded
             } else {
+                DebugLogger.log("refresh: failed without data, error=\(friendlyErrorMessage(error))")
                 loadState = .failed(friendlyErrorMessage(error))
             }
 
@@ -305,6 +321,7 @@ final class AppState: ObservableObject {
             return
         }
 
+        DebugLogger.log("logout: clear token and task cache")
         tokenStore.deleteToken(baseURL: config.baseURL, account: config.account)
         tokenStore.deletePassword(baseURL: config.baseURL, account: config.account)
         taskWorks = []
@@ -418,11 +435,13 @@ final class AppState: ObservableObject {
     private func restoreCachedTaskWorks() {
         guard let config, currentToken != nil else { return }
         guard let cachedTaskWorks = TaskCacheStore.loadTaskWorks(defaults: .standard, userID: config.userID) else {
+            DebugLogger.log("restoreCachedTaskWorks: miss for userID=\(config.userID ?? 0)")
             return
         }
 
         taskWorks = cachedTaskWorks
         totalConsumed = cachedTaskWorks.reduce(0) { $0 + $1.totalConsumed }
+        DebugLogger.log("restoreCachedTaskWorks: hit for userID=\(config.userID ?? 0), count=\(cachedTaskWorks.count)")
     }
 
     private func friendlyErrorMessage(_ error: Error) -> String {
