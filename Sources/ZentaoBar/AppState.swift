@@ -107,9 +107,11 @@ final class AppState: ObservableObject {
             return
         }
 
-        DebugLogger.log("bootstrap: reconfigure auto refresh and refresh without force")
+        DebugLogger.log("bootstrap: reconfigure auto refresh and start immediate background refresh")
         reconfigureAutoRefresh()
-        await refresh(force: false)
+        Task { @MainActor [weak self] in
+            await self?.refresh(force: true)
+        }
     }
 
     func login(baseURL rawBaseURL: String, account rawAccount: String, password: String) async -> Bool {
