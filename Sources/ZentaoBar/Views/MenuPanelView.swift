@@ -6,6 +6,9 @@ struct MenuPanelView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var preferences: PreferencesStore
 
+    private let panelWidth: CGFloat = 320
+    private let maxVisibleTaskCount = 8
+
     var body: some View {
         let screenMaxHeight = NSScreen.main?.visibleFrame.height ?? 1200
 
@@ -19,13 +22,12 @@ struct MenuPanelView: View {
                     statusBanner
                     taskSection
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
                 footer
                 footerErrorMessage
             }
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: panelWidth)
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxHeight: screenMaxHeight / 2, alignment: .topLeading)
         .background(
@@ -165,6 +167,11 @@ struct MenuPanelView: View {
             }
         }
         .scrollIndicators(.visible)
+        .frame(maxHeight: taskListMaxHeight)
+    }
+
+    private var taskListMaxHeight: CGFloat {
+        CGFloat(min(appState.taskWorks.count, maxVisibleTaskCount)) * 36
     }
 
     private var footer: some View {
@@ -232,7 +239,6 @@ struct MenuPanelView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxHeight: .infinity, alignment: .top)
 
             Divider()
                 .overlay(.white.opacity(0.08))
