@@ -111,13 +111,25 @@ struct ZentaoAPIClient: Sendable {
             token: token
         )
 
-        guard let response = try? JSONDecoder().decode(ZentaoTaskDetailResponse.self, from: data),
-              let innerData = response.data.data(using: .utf8),
-              let detailData = try? JSONDecoder().decode(ZentaoTaskDetailData.self, from: innerData) else {
+        let response: ZentaoTaskDetailResponse
+        do {
+            response = try JSONDecoder().decode(ZentaoTaskDetailResponse.self, from: data)
+        } catch {
+            DebugLogger.log("fetchTaskDetail: failed to decode outer response for taskID=\(taskID), error=\(error)")
             throw ZentaoAPIError.invalidResponse
         }
 
-        return detailData
+        guard let innerData = response.data.data(using: .utf8) else {
+            DebugLogger.log("fetchTaskDetail: failed to convert inner data to UTF-8 for taskID=\(taskID)")
+            throw ZentaoAPIError.invalidResponse
+        }
+
+        do {
+            return try JSONDecoder().decode(ZentaoTaskDetailData.self, from: innerData)
+        } catch {
+            DebugLogger.log("fetchTaskDetail: failed to decode detail data for taskID=\(taskID), error=\(error)")
+            throw ZentaoAPIError.invalidResponse
+        }
     }
 
     func fetchTodayDynamic(baseURL: String, token: String, userID: Int) async throws -> ZentaoDynamicData {

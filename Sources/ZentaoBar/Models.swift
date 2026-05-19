@@ -228,6 +228,43 @@ struct ZentaoTaskItem: Codable, Identifiable, Sendable {
         case progress, estimateLabel, consumedLabel, leftLabel, desc
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        project = try container.decode(Int.self, forKey: .project)
+        execution = try container.decode(Int.self, forKey: .execution)
+        module = try container.decodeIfPresent(Int.self, forKey: .module)
+        story = try container.decodeIfPresent(Int.self, forKey: .story)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        pri = try container.decodeIfPresent(Int.self, forKey: .pri)
+        estimate = try container.decodeIfPresent(Double.self, forKey: .estimate)
+        consumed = try container.decodeIfPresent(Double.self, forKey: .consumed)
+        left = try container.decodeIfPresent(Double.self, forKey: .left)
+        deadline = try container.decodeIfPresent(String.self, forKey: .deadline)
+        status = try container.decode(String.self, forKey: .status)
+        assignedTo = try container.decodeIfPresent(String.self, forKey: .assignedTo)
+        assignedToRealName = try container.decodeIfPresent(String.self, forKey: .assignedToRealName)
+        openedBy = try container.decodeIfPresent(String.self, forKey: .openedBy)
+        openedDate = try container.decodeIfPresent(String.self, forKey: .openedDate)
+        assignedDate = try container.decodeIfPresent(String.self, forKey: .assignedDate)
+        realStarted = try container.decodeIfPresent(String.self, forKey: .realStarted)
+        finishedBy = try container.decodeIfPresent(String.self, forKey: .finishedBy)
+        finishedDate = try container.decodeIfPresent(String.self, forKey: .finishedDate)
+        closedBy = try container.decodeIfPresent(String.self, forKey: .closedBy)
+        closedDate = try container.decodeIfPresent(String.self, forKey: .closedDate)
+        closedReason = try container.decodeIfPresent(String.self, forKey: .closedReason)
+        projectName = try container.decodeIfPresent(String.self, forKey: .projectName)
+        executionName = try container.decodeIfPresent(String.self, forKey: .executionName)
+        storyID = try Self.decodeOptionalInt(from: container, forKey: .storyID)
+        storyTitle = try container.decodeIfPresent(String.self, forKey: .storyTitle)
+        progress = try container.decodeIfPresent(Double.self, forKey: .progress)
+        estimateLabel = try container.decodeIfPresent(String.self, forKey: .estimateLabel)
+        consumedLabel = try container.decodeIfPresent(String.self, forKey: .consumedLabel)
+        leftLabel = try container.decodeIfPresent(String.self, forKey: .leftLabel)
+        desc = try container.decodeIfPresent(String.self, forKey: .desc)
+    }
+
     /// 仅需 id 和 name 的最小初始化，用于占位（今日动态中的已完成任务）
     init(id: Int, name: String) {
         self.id = id
@@ -263,6 +300,36 @@ struct ZentaoTaskItem: Codable, Identifiable, Sendable {
         self.consumedLabel = nil
         self.leftLabel = nil
         self.desc = nil
+    }
+
+    private static func decodeOptionalInt(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> Int? {
+        guard container.contains(key) else { return nil }
+
+        do {
+            return try container.decodeIfPresent(Int.self, forKey: key)
+        } catch {
+            guard let stringValue = try? container.decodeIfPresent(String.self, forKey: key) else {
+                throw error
+            }
+
+            let trimmedValue = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedValue.isEmpty {
+                return nil
+            }
+
+            guard let intValue = Int(trimmedValue) else {
+                throw DecodingError.dataCorruptedError(
+                    forKey: key,
+                    in: container,
+                    debugDescription: "Expected Int-compatible string for \(key.stringValue)."
+                )
+            }
+
+            return intValue
+        }
     }
 }
 
