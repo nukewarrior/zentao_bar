@@ -15,7 +15,24 @@ struct TaskWork: Identifiable, Equatable, Sendable, Codable {
     let name: String
     let url: String
     let deadline: String?
+    let status: String
     var totalConsumed: Double
+
+    init(
+        id: Int,
+        name: String,
+        url: String,
+        deadline: String?,
+        status: String,
+        totalConsumed: Double
+    ) {
+        self.id = id
+        self.name = name
+        self.url = url
+        self.deadline = deadline
+        self.status = status
+        self.totalConsumed = totalConsumed
+    }
 
     var formattedConsumedWithUnit: String {
         if totalConsumed.truncatingRemainder(dividingBy: 1) == 0 {
@@ -33,6 +50,7 @@ struct TaskWork: Identifiable, Equatable, Sendable, Codable {
     }
 
     var deadlineType: DeadlineType {
+        guard !isTerminal else { return .none }
         guard let deadlineDate else { return .none }
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
@@ -46,6 +64,18 @@ struct TaskWork: Identifiable, Equatable, Sendable, Codable {
         }
         return .none
     }
+
+    private var isTerminal: Bool {
+        Self.terminalStatuses.contains(status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    private static let terminalStatuses: Set<String> = [
+        "done",
+        "closed",
+        "cancel",
+        "cancelled",
+        "canceled"
+    ]
 
     enum DeadlineType: Equatable, Sendable, Codable {
         case none
@@ -95,7 +125,18 @@ struct TaskWork: Identifiable, Equatable, Sendable, Codable {
         case name
         case url
         case deadline
+        case status
         case totalConsumed
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        url = try container.decode(String.self, forKey: .url)
+        deadline = try container.decodeIfPresent(String.self, forKey: .deadline)
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        totalConsumed = try container.decode(Double.self, forKey: .totalConsumed)
     }
 }
 
@@ -585,12 +626,38 @@ struct ZentaoDynamicData: Codable, Sendable {
 
     var taskIDsWithActionToday: [Int] {
         var ids = Set<Int>()
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+
         for (_, actions) in dateGroups {
             for action in actions where action.objectType == "task" {
+                guard let actionDate = Self.parseActionDate(action.date),
+                      calendar.startOfDay(for: actionDate) == today else {
+                    continue
+                }
+
                 ids.insert(action.objectID)
             }
         }
         return Array(ids).sorted()
+    }
+
+    private static func parseActionDate(_ value: String) -> Date? {
+        let formats = [
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd HH:mm",
+            "yyyy-MM-dd"
+        ]
+
+        for format in formats {
+            let formatter = DateFormatter()
+            formatter.dateFormat = format
+            if let date = formatter.date(from: value) {
+                return date
+            }
+        }
+
+        return nil
     }
 }
 

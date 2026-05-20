@@ -239,7 +239,7 @@ final class AppState: ObservableObject {
                 }
             }
 
-            let taskDetails = await withTaskGroup(of: (Int, Double).self) { group in
+            let taskDetails = await withTaskGroup(of: (Int, Double, ZentaoTaskItem?).self) { group in
                 for task in allTasks {
                     group.addTask {
                         do {
@@ -248,27 +248,30 @@ final class AppState: ObservableObject {
                                 token: token,
                                 taskID: task.id
                             )
-                            return (task.id, detail.todayConsumed())
+                            return (task.id, detail.todayConsumed(), detail.task)
                         } catch {
-                            return (task.id, 0)
+                            return (task.id, 0, nil)
                         }
                     }
                 }
 
-                var results: [Int: Double] = [:]
-                for await (taskID, todayConsumed) in group {
-                    results[taskID] = todayConsumed
+                var results: [Int: (todayConsumed: Double, detailTask: ZentaoTaskItem?)] = [:]
+                for await (taskID, todayConsumed, detailTask) in group {
+                    results[taskID] = (todayConsumed, detailTask)
                 }
                 return results
             }
 
             taskWorks = allTasks.map { task in
-                let todayConsumed = taskDetails[task.id] ?? 0
+                let detail = taskDetails[task.id]
+                let resolvedTask = detail?.detailTask ?? task
+                let todayConsumed = detail?.todayConsumed ?? 0
                 return TaskWork(
-                    id: task.id,
-                    name: task.name,
-                    url: "\(config.baseURL)/task-view-\(task.id).html",
-                    deadline: task.deadline,
+                    id: resolvedTask.id,
+                    name: resolvedTask.name,
+                    url: "\(config.baseURL)/task-view-\(resolvedTask.id).html",
+                    deadline: resolvedTask.deadline,
+                    status: resolvedTask.status,
                     totalConsumed: todayConsumed
                 )
             }.sorted { left, right in
