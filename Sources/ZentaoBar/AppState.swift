@@ -226,9 +226,11 @@ final class AppState: ObservableObject {
             var allTasks = mergeTasks(current: currentTasks, involved: involvedTasks)
 
             // 补充今日有动态但不在指派/参与列表中的任务（如已完成的）
+            let dynamicTaskIDsToday = Set(dynamicTasksToday?.taskIDsWithActionToday ?? [])
+
             if let dynamicTasksToday {
                 let existingIDs = Set(allTasks.map { $0.id })
-                for taskID in dynamicTasksToday.taskIDsWithActionToday {
+                for taskID in dynamicTaskIDsToday {
                     if !existingIDs.contains(taskID) {
                         let name = dynamicTasksToday.dateGroups.values
                             .flatMap { $0 }
@@ -262,10 +264,19 @@ final class AppState: ObservableObject {
                 return results
             }
 
-            taskWorks = allTasks.map { task in
+            taskWorks = allTasks.compactMap { task in
                 let detail = taskDetails[task.id]
                 let resolvedTask = detail?.detailTask ?? task
                 let todayConsumed = detail?.todayConsumed ?? 0
+                guard shouldDisplayTask(
+                    resolvedTask,
+                    todayConsumed: todayConsumed,
+                    hasActionToday: dynamicTaskIDsToday.contains(resolvedTask.id)
+                ) else {
+                    DebugLogger.log("refresh: hide stale terminal task id=\(resolvedTask.id), status=\(resolvedTask.status)")
+                    return nil
+                }
+
                 return TaskWork(
                     id: resolvedTask.id,
                     name: resolvedTask.name,
@@ -436,6 +447,30 @@ final class AppState: ObservableObject {
 
         return merged.values.sorted { $0.id < $1.id }
     }
+
+    private func shouldDisplayTask(
+        _ task: ZentaoTaskItem,
+        todayConsumed: Double,
+        hasActionToday: Bool
+    ) -> Bool {
+        if !isTerminalTask(task) {
+            return true
+        }
+
+        return todayConsumed > 0 || hasActionToday
+    }
+
+    private func isTerminalTask(_ task: ZentaoTaskItem) -> Bool {
+        Self.terminalTaskStatuses.contains(task.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    private static let terminalTaskStatuses: Set<String> = [
+        "done",
+        "closed",
+        "cancel",
+        "cancelled",
+        "canceled"
+    ]
 
     private func restoreCachedTaskWorks() {
         guard let config, currentToken != nil else { return }
