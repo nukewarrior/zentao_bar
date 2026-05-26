@@ -252,10 +252,11 @@ final class AppState: ObservableObject {
                 for task in allTasks {
                     group.addTask {
                         do {
-                            let detail = try await self.apiClient.fetchTaskDetail(
+                            let detail = try await Self.fetchTaskDetailWithRetry(
+                                apiClient: self.apiClient,
                                 baseURL: config.baseURL,
                                 token: token,
-                                taskID: task.id
+                                task: task
                             )
                             return (task.id, .success(todayConsumed: detail.todayConsumed(), detailTask: detail.task))
                         } catch {
@@ -273,6 +274,21 @@ final class AppState: ObservableObject {
                 return results
             }
 
+            let detailSuccessCount = taskDetails.values.reduce(0) { count, result in
+                if case .success = result {
+                    return count + 1
+                }
+                return count
+            }
+            let detailFailureCount = taskDetails.values.reduce(0) { count, result in
+                if case .failure = result {
+                    return count + 1
+                }
+                return count
+            }
+            var fallbackHitCount = 0
+            var fallbackMissCount = 0
+
             taskWorks = allTasks.compactMap { task in
                 let detail = taskDetails[task.id]
                 let resolvedTask: ZentaoTaskItem
@@ -286,18 +302,22 @@ final class AppState: ObservableObject {
                     resolvedTask = task
                     if let cachedTaskWork = previousTaskWorksByID[task.id] {
                         todayConsumed = cachedTaskWork.totalConsumed
+                        fallbackHitCount += 1
                         DebugLogger.log("refresh: task detail fallback hit, taskID=\(task.id), name=\(task.name), cachedConsumed=\(cachedTaskWork.totalConsumed), error=\(message)")
                     } else {
                         todayConsumed = 0
+                        fallbackMissCount += 1
                         DebugLogger.log("refresh: task detail fallback miss, taskID=\(task.id), name=\(task.name), error=\(message)")
                     }
                 case .none:
                     resolvedTask = task
                     if let cachedTaskWork = previousTaskWorksByID[task.id] {
                         todayConsumed = cachedTaskWork.totalConsumed
+                        fallbackHitCount += 1
                         DebugLogger.log("refresh: task detail missing result fallback hit, taskID=\(task.id), name=\(task.name), cachedConsumed=\(cachedTaskWork.totalConsumed)")
                     } else {
                         todayConsumed = 0
+                        fallbackMissCount += 1
                         DebugLogger.log("refresh: task detail missing result fallback miss, taskID=\(task.id), name=\(task.name)")
                     }
                 }
@@ -326,6 +346,7 @@ final class AppState: ObservableObject {
                 return left.totalConsumed > right.totalConsumed
             }
 
+            DebugLogger.log("refresh: task detail summary, total=\(allTasks.count), success=\(detailSuccessCount), failed=\(detailFailureCount), fallbackHit=\(fallbackHitCount), fallbackMiss=\(fallbackMissCount)")
             totalConsumed = taskWorks.reduce(0) { $0 + $1.totalConsumed }
             lastUpdatedAt = Date()
             configStore.saveLastRefreshDate(lastUpdatedAt)
@@ -480,6 +501,61 @@ final class AppState: ObservableObject {
         }
 
         return merged.values.sorted { $0.id < $1.id }
+    }
+
+    nonisolated private static func fetchTaskDetailWithRetry(
+        apiClient: ZentaoAPIClient,
+        baseURL: String,
+        token: String,
+        task: ZentaoTaskItem,
+        maxAttempts: Int = 3
+    ) async throws -> ZentaoTaskDetailData {
+        var attempt = 1
+
+        while true {
+            do {
+                return try await apiClient.fetchTaskDetail(
+                    baseURL: baseURL,
+                    token: token,
+                    taskID: task.id
+                )
+            } catch {
+                guard attempt < maxAttempts, isRetryableTaskDetailError(error) else {
+                    throw error
+                }
+
+                let nextAttempt = attempt + 1
+                let delayNanoseconds = UInt64(attempt) * 500_000_000
+                DebugLogger.log("refresh: retry task detail, taskID=\(task.id), name=\(task.name), nextAttempt=\(nextAttempt), maxAttempts=\(maxAttempts), error=\(error.localizedDescription)")
+                try await Task.sleep(nanoseconds: delayNanoseconds)
+                attempt = nextAttempt
+            }
+        }
+    }
+
+    nonisolated private static func isRetryableTaskDetailError(_ error: Error) -> Bool {
+        if let urlError = error as? URLError {
+            return isRetryableURLErrorCode(urlError.code)
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            return isRetryableURLErrorCode(URLError.Code(rawValue: nsError.code))
+        }
+
+        return false
+    }
+
+    nonisolated private static func isRetryableURLErrorCode(_ code: URLError.Code) -> Bool {
+        switch code {
+        case .timedOut,
+             .networkConnectionLost,
+             .cannotConnectToHost,
+             .notConnectedToInternet:
+            return true
+        default:
+            return false
+        }
     }
 
     private func shouldDisplayTask(
