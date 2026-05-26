@@ -173,7 +173,15 @@ struct ZentaoAPIClient: Sendable {
             request.setValue(token, forHTTPHeaderField: "Token")
         }
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            DebugLogger.log("HTTP \(method) \(url.absoluteString) failed: \(error.localizedDescription)")
+            throw error
+        }
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ZentaoAPIError.invalidResponse
         }

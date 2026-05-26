@@ -7,6 +7,11 @@ import SwiftUI
 final class AppState: ObservableObject {
     static let shared = AppState()
 
+    private enum TaskDetailFetchResult: Sendable {
+        case success(todayConsumed: Double, detailTask: ZentaoTaskItem?)
+        case failure(message: String)
+    }
+
     @Published private(set) var loadState: LoadState = .idle
     @Published private(set) var taskWorks: [TaskWork] = []
     @Published private(set) var totalConsumed: Double = 0
@@ -241,7 +246,9 @@ final class AppState: ObservableObject {
                 }
             }
 
-            let taskDetails = await withTaskGroup(of: (Int, Double, ZentaoTaskItem?).self) { group in
+            let previousTaskWorksByID = Dictionary(uniqueKeysWithValues: taskWorks.map { ($0.id, $0) })
+
+            let taskDetails = await withTaskGroup(of: (Int, TaskDetailFetchResult).self) { group in
                 for task in allTasks {
                     group.addTask {
                         do {
@@ -250,24 +257,51 @@ final class AppState: ObservableObject {
                                 token: token,
                                 taskID: task.id
                             )
-                            return (task.id, detail.todayConsumed(), detail.task)
+                            return (task.id, .success(todayConsumed: detail.todayConsumed(), detailTask: detail.task))
                         } catch {
-                            return (task.id, 0, nil)
+                            let message = error.localizedDescription
+                            DebugLogger.log("refresh: fetch task detail failed, taskID=\(task.id), name=\(task.name), error=\(message)")
+                            return (task.id, .failure(message: message))
                         }
                     }
                 }
 
-                var results: [Int: (todayConsumed: Double, detailTask: ZentaoTaskItem?)] = [:]
-                for await (taskID, todayConsumed, detailTask) in group {
-                    results[taskID] = (todayConsumed, detailTask)
+                var results: [Int: TaskDetailFetchResult] = [:]
+                for await (taskID, result) in group {
+                    results[taskID] = result
                 }
                 return results
             }
 
             taskWorks = allTasks.compactMap { task in
                 let detail = taskDetails[task.id]
-                let resolvedTask = detail?.detailTask ?? task
-                let todayConsumed = detail?.todayConsumed ?? 0
+                let resolvedTask: ZentaoTaskItem
+                let todayConsumed: Double
+
+                switch detail {
+                case let .success(detailTodayConsumed, detailTask):
+                    resolvedTask = detailTask ?? task
+                    todayConsumed = detailTodayConsumed
+                case let .failure(message):
+                    resolvedTask = task
+                    if let cachedTaskWork = previousTaskWorksByID[task.id] {
+                        todayConsumed = cachedTaskWork.totalConsumed
+                        DebugLogger.log("refresh: task detail fallback hit, taskID=\(task.id), name=\(task.name), cachedConsumed=\(cachedTaskWork.totalConsumed), error=\(message)")
+                    } else {
+                        todayConsumed = 0
+                        DebugLogger.log("refresh: task detail fallback miss, taskID=\(task.id), name=\(task.name), error=\(message)")
+                    }
+                case .none:
+                    resolvedTask = task
+                    if let cachedTaskWork = previousTaskWorksByID[task.id] {
+                        todayConsumed = cachedTaskWork.totalConsumed
+                        DebugLogger.log("refresh: task detail missing result fallback hit, taskID=\(task.id), name=\(task.name), cachedConsumed=\(cachedTaskWork.totalConsumed)")
+                    } else {
+                        todayConsumed = 0
+                        DebugLogger.log("refresh: task detail missing result fallback miss, taskID=\(task.id), name=\(task.name)")
+                    }
+                }
+
                 guard shouldDisplayTask(
                     resolvedTask,
                     todayConsumed: todayConsumed,
