@@ -504,7 +504,7 @@ struct ZentaoTaskDetailData: Codable, Sendable {
         var total: Double = 0
 
         for (_, action) in actions {
-            guard let actionDate = parseDate(action.date),
+            guard let actionDate = effectiveDate(for: action),
                   calendar.isDate(actionDate, inSameDayAs: today) else {
                 continue
             }
@@ -532,9 +532,31 @@ struct ZentaoTaskDetailData: Codable, Sendable {
     }
 
     private func parseDate(_ dateString: String) -> Date? {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter.date(from: dateString)
+        let formats = [
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd HH:mm",
+            "yyyy-MM-dd"
+        ]
+
+        for format in formats {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = format
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+        }
+
+        return nil
+    }
+
+    private func effectiveDate(for action: ZentaoTaskAction) -> Date? {
+        if let workDate = action.workDate,
+           let parsedWorkDate = parseDate(workDate) {
+            return parsedWorkDate
+        }
+
+        return parseDate(action.date)
     }
 }
 
@@ -547,10 +569,23 @@ struct ZentaoTaskAction: Codable, Sendable {
     let date: String
     let comment: String?
     let extra: String?
+    let originalDate: String?
     let history: [ZentaoActionHistory]?
 
+    var workDate: String? {
+        guard action == "recordworkhour" || hasConsumedChange else {
+            return nil
+        }
+
+        return originalDate
+    }
+
     enum CodingKeys: String, CodingKey {
-        case id, objectType, objectID, actor, action, date, comment, extra, history
+        case id, objectType, objectID, actor, action, date, comment, extra, originalDate, history
+    }
+
+    private var hasConsumedChange: Bool {
+        history?.contains { $0.field == "consumed" } ?? false
     }
 }
 
