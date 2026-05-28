@@ -217,18 +217,13 @@ final class AppState: ObservableObject {
                 token: token
             )
 
-            let involvedTasks = (try? await apiClient.fetchMyInvolvedTasks(
-                baseURL: config.baseURL,
-                token: token
-            )) ?? []
-
             let dynamicTasksToday = (try? await apiClient.fetchTodayDynamic(
                 baseURL: config.baseURL,
                 token: token,
                 userID: config.userID ?? 0
             ))
 
-            var allTasks = mergeTasks(current: currentTasks, involved: involvedTasks)
+            var allTasks = currentTasks.sorted { $0.id < $1.id }
 
             // 补充今日有动态但不在指派/参与列表中的任务（如已完成的）
             let dynamicTaskIDsToday = Set(dynamicTasksToday?.taskIDsWithActionToday ?? [])
@@ -485,22 +480,6 @@ final class AppState: ObservableObject {
         case .dueToday: return 1
         case .none: return 2
         }
-    }
-
-    private func mergeTasks(current: [ZentaoTaskItem], involved: [ZentaoTaskItem]) -> [ZentaoTaskItem] {
-        var merged: [Int: ZentaoTaskItem] = [:]
-
-        for task in current {
-            merged[task.id] = task
-        }
-
-        for task in involved {
-            if merged[task.id] == nil {
-                merged[task.id] = task
-            }
-        }
-
-        return merged.values.sorted { $0.id < $1.id }
     }
 
     nonisolated private static func fetchTaskDetailWithRetry(

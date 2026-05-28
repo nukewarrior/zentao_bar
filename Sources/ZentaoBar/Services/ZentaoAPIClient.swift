@@ -91,19 +91,6 @@ struct ZentaoAPIClient: Sendable {
         return tasks
     }
 
-    func fetchMyInvolvedTasks(baseURL: String, token: String) async throws -> [ZentaoTaskItem] {
-        DebugLogger.log("Fetching involved tasks from /my-contribute-task-myInvolved")
-        let data = try await request(
-            baseURL: baseURL,
-            path: "/my-contribute-task-myInvolved--id_desc.json",
-            token: token
-        )
-
-        let tasks = try parseTaskListResponse(data)
-        DebugLogger.log("Loaded involved tasks: count=\(tasks.count)")
-        return tasks
-    }
-
     func fetchTaskDetail(baseURL: String, token: String, taskID: Int) async throws -> ZentaoTaskDetailData {
         let data = try await request(
             baseURL: baseURL,
