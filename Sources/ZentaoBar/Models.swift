@@ -17,6 +17,7 @@ struct TaskWork: Identifiable, Equatable, Sendable, Codable {
     let deadline: String?
     let status: String
     var totalConsumed: Double
+    let isPlaceholder: Bool
 
     init(
         id: Int,
@@ -24,7 +25,8 @@ struct TaskWork: Identifiable, Equatable, Sendable, Codable {
         url: String,
         deadline: String?,
         status: String,
-        totalConsumed: Double
+        totalConsumed: Double,
+        isPlaceholder: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -32,6 +34,7 @@ struct TaskWork: Identifiable, Equatable, Sendable, Codable {
         self.deadline = deadline
         self.status = status
         self.totalConsumed = totalConsumed
+        self.isPlaceholder = isPlaceholder
     }
 
     var formattedConsumedWithUnit: String {
@@ -127,6 +130,7 @@ struct TaskWork: Identifiable, Equatable, Sendable, Codable {
         case deadline
         case status
         case totalConsumed
+        case isPlaceholder
     }
 
     init(from decoder: Decoder) throws {
@@ -137,6 +141,7 @@ struct TaskWork: Identifiable, Equatable, Sendable, Codable {
         deadline = try container.decodeIfPresent(String.self, forKey: .deadline)
         status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
         totalConsumed = try container.decode(Double.self, forKey: .totalConsumed)
+        isPlaceholder = try container.decodeIfPresent(Bool.self, forKey: .isPlaceholder) ?? false
     }
 }
 
@@ -258,6 +263,7 @@ struct ZentaoTaskItem: Codable, Identifiable, Sendable {
     let consumedLabel: String?
     let leftLabel: String?
     let desc: String?
+    let isPlaceholder: Bool
 
     enum CodingKeys: String, CodingKey {
         case id, name, project, execution, module, story, type, pri
@@ -304,6 +310,7 @@ struct ZentaoTaskItem: Codable, Identifiable, Sendable {
         consumedLabel = try container.decodeIfPresent(String.self, forKey: .consumedLabel)
         leftLabel = try container.decodeIfPresent(String.self, forKey: .leftLabel)
         desc = try container.decodeIfPresent(String.self, forKey: .desc)
+        isPlaceholder = false
     }
 
     /// 仅需 id 和 name 的最小初始化，用于占位（今日动态中的已完成任务）
@@ -341,6 +348,7 @@ struct ZentaoTaskItem: Codable, Identifiable, Sendable {
         self.consumedLabel = nil
         self.leftLabel = nil
         self.desc = nil
+        self.isPlaceholder = true
     }
 
     private static func decodeOptionalInt(

@@ -129,7 +129,7 @@ struct MenuPanelView: View {
                             deadlineIndicator(for: task)
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(task.name)
+                                Text(task.isPlaceholder ? "[数据缺失] \(task.name)" : task.name)
                                     .font(.subheadline)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
@@ -148,9 +148,9 @@ struct MenuPanelView: View {
 
                             Spacer(minLength: 4)
 
-                            Text(task.formattedConsumedWithUnit)
+                            Text(task.isPlaceholder ? "--" : task.formattedConsumedWithUnit)
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(deadlineAccentColor(for: task))
+                                .foregroundStyle(task.isPlaceholder ? .secondary : deadlineAccentColor(for: task))
                                 .frame(width: 42, alignment: .trailing)
                         }
                         .contentShape(Rectangle())
@@ -355,12 +355,8 @@ struct MenuPanelView: View {
     }
 
     private var isRefreshingState: Bool {
-        switch appState.loadState {
-        case .loading, .idle:
-            return true
-        default:
-            return false
-        }
+        if case .loading = appState.loadState { return true }
+        return false
     }
 
     @ViewBuilder

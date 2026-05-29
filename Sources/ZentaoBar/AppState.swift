@@ -165,9 +165,10 @@ final class AppState: ObservableObject {
             }
 
             let newConfig = AppConfig(baseURL: baseURL, account: account, userID: user.id)
-            try configStore.save(newConfig)
+            // Keychain 先保存，UserDefaults 后保存 — Keychain 失败则不污染 config
             try tokenStore.saveToken(token, baseURL: baseURL, account: account)
             try tokenStore.savePassword(password, baseURL: baseURL, account: account)
+            try configStore.save(newConfig)
             reconfigureAutoRefresh()
             await refresh(force: true, bypassInFlight: true)
             return true
@@ -192,18 +193,23 @@ final class AppState: ObservableObject {
             return
         }
 
+        // 立即设置标志位，消除 check-then-set 之间的竞态窗口
+        if !bypassInFlight {
+            isRefreshingInFlight = true
+        }
+
         if !force,
            let lastUpdatedAt,
            Date().timeIntervalSince(lastUpdatedAt) < preferences.autoRefreshInterval.seconds,
            !taskWorks.isEmpty {
             DebugLogger.log("refresh: reuse recent in-memory tasks, count=\(taskWorks.count)")
             loadState = .loaded
+            if !bypassInFlight { isRefreshingInFlight = false }
             return
         }
 
         let hadData = !taskWorks.isEmpty
         DebugLogger.log("refresh: start, force=\(force), hadData=\(hadData), currentCount=\(taskWorks.count)")
-        isRefreshingInFlight = true
         loadState = .loading
         errorMessage = nil
 
@@ -332,7 +338,8 @@ final class AppState: ObservableObject {
                     url: "\(config.baseURL)/task-view-\(resolvedTask.id).html",
                     deadline: resolvedTask.deadline,
                     status: resolvedTask.status,
-                    totalConsumed: todayConsumed
+                    totalConsumed: todayConsumed,
+                    isPlaceholder: resolvedTask.isPlaceholder
                 )
             }.sorted { left, right in
                 let lhs = deadlinePriority(left)
