@@ -233,6 +233,11 @@ final class AppState: ObservableObject {
 
             // 补充今日有动态但不在指派/参与列表中的任务（如已完成的）
             let dynamicTaskIDsToday = Set(dynamicTasksToday?.taskIDsWithActionToday ?? [])
+            if let dynamicTasksToday {
+                DebugLogger.log("refresh: today dynamic parsed, recTotal=\(dynamicTasksToday.recTotal), taskIDs=\(dynamicTaskIDsToday.sorted())")
+            } else {
+                DebugLogger.log("refresh: today dynamic unavailable")
+            }
 
             if let dynamicTasksToday {
                 let existingIDs = Set(allTasks.map { $0.id })

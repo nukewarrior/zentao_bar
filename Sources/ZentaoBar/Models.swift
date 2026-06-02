@@ -674,7 +674,7 @@ struct ZentaoDynamicData: Codable, Sendable {
 
         for (_, actions) in dateGroups {
             for action in actions where action.objectType == "task" {
-                guard let actionDate = Self.parseActionDate(action.date),
+                guard let actionDate = Self.effectiveActionDate(action, calendar: calendar),
                       calendar.startOfDay(for: actionDate) == today else {
                     continue
                 }
@@ -685,7 +685,20 @@ struct ZentaoDynamicData: Codable, Sendable {
         return Array(ids).sorted()
     }
 
+    private static func effectiveActionDate(_ action: ZentaoDynamicAction, calendar: Calendar) -> Date? {
+        if let originalDate = action.originalDate,
+           let date = parseActionDate(originalDate, calendar: calendar) {
+            return date
+        }
+
+        return parseActionDate(action.date, calendar: calendar)
+    }
+
     private static func parseActionDate(_ value: String) -> Date? {
+        parseActionDate(value, calendar: .current)
+    }
+
+    private static func parseActionDate(_ value: String, calendar: Calendar) -> Date? {
         let formats = [
             "yyyy-MM-dd HH:mm:ss",
             "yyyy-MM-dd HH:mm",
@@ -694,10 +707,20 @@ struct ZentaoDynamicData: Codable, Sendable {
 
         for format in formats {
             let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = format
             if let date = formatter.date(from: value) {
                 return date
             }
+        }
+
+        let year = calendar.component(.year, from: Date())
+        let valueWithYear = "\(year)-\(value)"
+        let shortFormatter = DateFormatter()
+        shortFormatter.locale = Locale(identifier: "zh_CN")
+        shortFormatter.dateFormat = "yyyy-M月d日 HH:mm"
+        if let date = shortFormatter.date(from: valueWithYear) {
+            return date
         }
 
         return nil
