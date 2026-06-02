@@ -12,6 +12,11 @@ final class AppState: ObservableObject {
         case failure(message: String)
     }
 
+    private enum TaskDetailFallbackOutcome {
+        case hit
+        case miss
+    }
+
     @Published private(set) var loadState: LoadState = .idle
     @Published private(set) var taskWorks: [TaskWork] = []
     @Published private(set) var totalConsumed: Double = 0
@@ -253,8 +258,19 @@ final class AppState: ObservableObject {
             }
 
             let previousTaskWorksByID = Dictionary(uniqueKeysWithValues: taskWorks.map { ($0.id, $0) })
+            var incrementalTaskWorksByID = previousTaskWorksByID
+            var allTasksByID: [Int: ZentaoTaskItem] = [:]
+            for task in allTasks {
+                allTasksByID[task.id] = task
+            }
+            var resolvedTaskWorksByID: [Int: TaskWork] = [:]
+            var processedTaskIDs = Set<Int>()
+            var detailSuccessCount = 0
+            var detailFailureCount = 0
+            var fallbackHitCount = 0
+            var fallbackMissCount = 0
 
-            let taskDetails = await withTaskGroup(of: (Int, TaskDetailFetchResult).self) { group in
+            await withTaskGroup(of: (Int, TaskDetailFetchResult).self) { group in
                 for task in allTasks {
                     group.addTask {
                         do {
@@ -273,88 +289,70 @@ final class AppState: ObservableObject {
                     }
                 }
 
-                var results: [Int: TaskDetailFetchResult] = [:]
                 for await (taskID, result) in group {
-                    results[taskID] = result
-                }
-                return results
-            }
-
-            let detailSuccessCount = taskDetails.values.reduce(0) { count, result in
-                if case .success = result {
-                    return count + 1
-                }
-                return count
-            }
-            let detailFailureCount = taskDetails.values.reduce(0) { count, result in
-                if case .failure = result {
-                    return count + 1
-                }
-                return count
-            }
-            var fallbackHitCount = 0
-            var fallbackMissCount = 0
-
-            taskWorks = allTasks.compactMap { task in
-                let detail = taskDetails[task.id]
-                let resolvedTask: ZentaoTaskItem
-                let todayConsumed: Double
-
-                switch detail {
-                case let .success(detailTodayConsumed, detailTask):
-                    resolvedTask = detailTask ?? task
-                    todayConsumed = detailTodayConsumed
-                case let .failure(message):
-                    resolvedTask = task
-                    if let cachedTaskWork = previousTaskWorksByID[task.id] {
-                        todayConsumed = cachedTaskWork.totalConsumed
-                        fallbackHitCount += 1
-                        DebugLogger.log("refresh: task detail fallback hit, taskID=\(task.id), name=\(task.name), cachedConsumed=\(cachedTaskWork.totalConsumed), error=\(message)")
-                    } else {
-                        todayConsumed = 0
-                        fallbackMissCount += 1
-                        DebugLogger.log("refresh: task detail fallback miss, taskID=\(task.id), name=\(task.name), error=\(message)")
+                    guard let task = allTasksByID[taskID] else {
+                        DebugLogger.log("refresh: task detail result ignored, unknown taskID=\(taskID)")
+                        continue
                     }
-                case .none:
-                    resolvedTask = task
-                    if let cachedTaskWork = previousTaskWorksByID[task.id] {
-                        todayConsumed = cachedTaskWork.totalConsumed
-                        fallbackHitCount += 1
-                        DebugLogger.log("refresh: task detail missing result fallback hit, taskID=\(task.id), name=\(task.name), cachedConsumed=\(cachedTaskWork.totalConsumed)")
-                    } else {
-                        todayConsumed = 0
-                        fallbackMissCount += 1
-                        DebugLogger.log("refresh: task detail missing result fallback miss, taskID=\(task.id), name=\(task.name)")
+
+                    processedTaskIDs.insert(taskID)
+                    switch result {
+                    case .success:
+                        detailSuccessCount += 1
+                    case .failure:
+                        detailFailureCount += 1
                     }
-                }
 
-                guard shouldDisplayTask(
-                    resolvedTask,
-                    todayConsumed: todayConsumed,
-                    hasActionToday: dynamicTaskIDsToday.contains(resolvedTask.id)
-                ) else {
-                    DebugLogger.log("refresh: hide stale terminal task id=\(resolvedTask.id), status=\(resolvedTask.status)")
-                    return nil
-                }
+                    let resolution = resolveTaskWork(
+                        task: task,
+                        detail: result,
+                        previousTaskWorksByID: previousTaskWorksByID,
+                        dynamicTaskIDsToday: dynamicTaskIDsToday,
+                        baseURL: config.baseURL
+                    )
+                    switch resolution.fallbackOutcome {
+                    case .hit:
+                        fallbackHitCount += 1
+                    case .miss:
+                        fallbackMissCount += 1
+                    case .none:
+                        break
+                    }
 
-                return TaskWork(
-                    id: resolvedTask.id,
-                    name: resolvedTask.name,
-                    url: "\(config.baseURL)/task-view-\(resolvedTask.id).html",
-                    deadline: resolvedTask.deadline,
-                    status: resolvedTask.status,
-                    totalConsumed: todayConsumed,
-                    isPlaceholder: resolvedTask.isPlaceholder
+                    guard let resolvedTaskWork = resolution.taskWork else {
+                        continue
+                    }
+
+                    resolvedTaskWorksByID[taskID] = resolvedTaskWork
+                    incrementalTaskWorksByID[taskID] = resolvedTaskWork
+                    publishTaskWorks(Array(incrementalTaskWorksByID.values))
+                }
+            }
+
+            for task in allTasks where !processedTaskIDs.contains(task.id) {
+                let resolution = resolveTaskWork(
+                    task: task,
+                    detail: nil,
+                    previousTaskWorksByID: previousTaskWorksByID,
+                    dynamicTaskIDsToday: dynamicTaskIDsToday,
+                    baseURL: config.baseURL
                 )
-            }.sorted { left, right in
-                let lhs = deadlinePriority(left)
-                let rhs = deadlinePriority(right)
-                if lhs != rhs { return lhs < rhs }
-                return left.totalConsumed > right.totalConsumed
+                switch resolution.fallbackOutcome {
+                case .hit:
+                    fallbackHitCount += 1
+                case .miss:
+                    fallbackMissCount += 1
+                case .none:
+                    break
+                }
+                if let resolvedTaskWork = resolution.taskWork {
+                    resolvedTaskWorksByID[task.id] = resolvedTaskWork
+                }
             }
 
             DebugLogger.log("refresh: task detail summary, total=\(allTasks.count), success=\(detailSuccessCount), failed=\(detailFailureCount), fallbackHit=\(fallbackHitCount), fallbackMiss=\(fallbackMissCount)")
-            totalConsumed = taskWorks.reduce(0) { $0 + $1.totalConsumed }
+            let finalTaskWorks = allTasks.compactMap { resolvedTaskWorksByID[$0.id] }
+            publishTaskWorks(finalTaskWorks)
             lastUpdatedAt = Date()
             configStore.saveLastRefreshDate(lastUpdatedAt)
             TaskCacheStore.saveTaskWorks(taskWorks, defaults: .standard, userID: config.userID)
@@ -492,6 +490,84 @@ final class AppState: ObservableObject {
         case .dueToday: return 1
         case .none: return 2
         }
+    }
+
+    private func publishTaskWorks(_ taskWorks: [TaskWork]) {
+        let sortedTaskWorks = sortedTaskWorks(taskWorks)
+        self.taskWorks = sortedTaskWorks
+        totalConsumed = sortedTaskWorks.reduce(0) { $0 + $1.totalConsumed }
+    }
+
+    private func sortedTaskWorks(_ taskWorks: [TaskWork]) -> [TaskWork] {
+        taskWorks.sorted { left, right in
+            let lhs = deadlinePriority(left)
+            let rhs = deadlinePriority(right)
+            if lhs != rhs { return lhs < rhs }
+            return left.totalConsumed > right.totalConsumed
+        }
+    }
+
+    private func resolveTaskWork(
+        task: ZentaoTaskItem,
+        detail: TaskDetailFetchResult?,
+        previousTaskWorksByID: [Int: TaskWork],
+        dynamicTaskIDsToday: Set<Int>,
+        baseURL: String
+    ) -> (taskWork: TaskWork?, fallbackOutcome: TaskDetailFallbackOutcome?) {
+        let resolvedTask: ZentaoTaskItem
+        let todayConsumed: Double
+        let fallbackOutcome: TaskDetailFallbackOutcome?
+
+        switch detail {
+        case let .success(detailTodayConsumed, detailTask):
+            resolvedTask = detailTask ?? task
+            todayConsumed = detailTodayConsumed
+            fallbackOutcome = nil
+        case let .failure(message):
+            resolvedTask = task
+            if let cachedTaskWork = previousTaskWorksByID[task.id] {
+                todayConsumed = cachedTaskWork.totalConsumed
+                fallbackOutcome = .hit
+                DebugLogger.log("refresh: task detail fallback hit, taskID=\(task.id), name=\(task.name), cachedConsumed=\(cachedTaskWork.totalConsumed), error=\(message)")
+            } else {
+                todayConsumed = 0
+                fallbackOutcome = .miss
+                DebugLogger.log("refresh: task detail fallback miss, taskID=\(task.id), name=\(task.name), error=\(message)")
+            }
+        case .none:
+            resolvedTask = task
+            if let cachedTaskWork = previousTaskWorksByID[task.id] {
+                todayConsumed = cachedTaskWork.totalConsumed
+                fallbackOutcome = .hit
+                DebugLogger.log("refresh: task detail missing result fallback hit, taskID=\(task.id), name=\(task.name), cachedConsumed=\(cachedTaskWork.totalConsumed)")
+            } else {
+                todayConsumed = 0
+                fallbackOutcome = .miss
+                DebugLogger.log("refresh: task detail missing result fallback miss, taskID=\(task.id), name=\(task.name)")
+            }
+        }
+
+        guard shouldDisplayTask(
+            resolvedTask,
+            todayConsumed: todayConsumed,
+            hasActionToday: dynamicTaskIDsToday.contains(resolvedTask.id)
+        ) else {
+            DebugLogger.log("refresh: hide stale terminal task id=\(resolvedTask.id), status=\(resolvedTask.status)")
+            return (nil, fallbackOutcome)
+        }
+
+        return (
+            TaskWork(
+                id: resolvedTask.id,
+                name: resolvedTask.name,
+                url: "\(baseURL)/task-view-\(resolvedTask.id).html",
+                deadline: resolvedTask.deadline,
+                status: resolvedTask.status,
+                totalConsumed: todayConsumed,
+                isPlaceholder: resolvedTask.isPlaceholder
+            ),
+            fallbackOutcome
+        )
     }
 
     nonisolated private static func fetchTaskDetailWithRetry(
